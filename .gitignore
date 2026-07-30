@@ -1,0 +1,13 @@
+# 建置輸出
+bin/
+obj/
+publish/
+installer/
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# 其他
+*.log

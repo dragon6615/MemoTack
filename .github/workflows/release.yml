@@ -1,0 +1,42 @@
+# 推送 v*.*.* 格式的 tag 時，自動建置安裝程式並發佈 GitHub Release
+# 用法：git tag v1.1.0 && git push origin v1.1.0
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write # 建立 Release 需要寫入權限
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest # 內建 .NET SDK 與 Inno Setup 6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Get version from tag # v1.2.3 -> 1.2.3
+        id: ver
+        shell: pwsh
+        run: |
+          $v = $env:GITHUB_REF_NAME.TrimStart('v')
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build installer
+        shell: pwsh
+        run: .\build-installer.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MemoTack v${{ steps.ver.outputs.version }}
+          files: installer/MemoTack-Setup-${{ steps.ver.outputs.version }}.exe
+          generate_release_notes: true # 自動整理自上一版以來的 commit 清單

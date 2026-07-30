@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 允許在非 Windows 環境進行編譯（僅編譯；執行仍需 Windows） -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>MemoTack</AssemblyName>
+    <RootNamespace>MemoTack</RootNamespace>
+
+    <!-- 版本與產品資訊（發佈用） -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
+    <Product>MemoTack</Product>
+    <Description>仿 Windows Sticky Notes 的桌面便箋小工具</Description>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+</Project>
