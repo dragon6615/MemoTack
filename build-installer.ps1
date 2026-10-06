@@ -1,18 +1,27 @@
 ﻿# MemoTack 發佈 + 安裝程式建置
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File .\build-installer.ps1
+#   powershell -ExecutionPolicy Bypass -File .\build-installer.ps1                 # 版本號取自 MemoTack.csproj
 #   powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 1.1.0
 #   powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -SkipPublish   # 只重編安裝程式
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.0',
+    [string]$Version,
     [switch]$SkipPublish
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = $PSScriptRoot
+
+# 未指定版本時以 csproj 的 <Version> 為準，避免和程式本身的版本號脫鉤
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    [xml]$project = Get-Content -LiteralPath (Join-Path $projectRoot 'MemoTack.csproj') -Raw -Encoding UTF8
+    $Version = "$($project.Project.PropertyGroup.Version)".Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Invalid version '$Version' (expected x.y.z)"
+}
+Write-Host "Version: $Version"
 $publishDirectory = Join-Path $projectRoot 'publish\win-x64'
 $publishedExecutable = Join-Path $publishDirectory 'MemoTack.exe'
 $installerScript = Join-Path $projectRoot 'installer.iss'

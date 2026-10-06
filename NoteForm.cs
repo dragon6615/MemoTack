@@ -29,6 +29,8 @@ public class NoteForm : Form
     private readonly Button _btnDelete;
     private readonly Button _btnNew;
     private readonly Button _btnClose;
+    private readonly ToolTip _toolTip = new();       // 所有按鈕共用，隨便箋一起釋放
+    private readonly List<Font> _ownedFonts = new(); // 本便箋建立的字型，替換或關閉時釋放
 
     /// <summary>使用者按「＋」要求新增一張便箋</summary>
     public event Action<NoteForm>? NewNoteRequested;
@@ -49,6 +51,7 @@ public class NoteForm : Form
     {
         _data = data;
         _settings = settings;
+        _data.ColorIndex = ((data.ColorIndex % Palette.Length) + Palette.Length) % Palette.Length; // 防 JSON 裡的負數或超出範圍
 
         // ---- 視窗基本設定 ----
         FormBorderStyle = FormBorderStyle.None; // 無邊框
@@ -125,14 +128,18 @@ public class NoteForm : Form
         if (resetContentSize)
             _data.FontSize = _settings.ContentFontSize;
 
+        // 先記下舊字型，全部換上新字型後再釋放
+        var oldFonts = _ownedFonts.ToList();
+        _ownedFonts.Clear();
+
         // 置頂與否依設定
         TopMost = _settings.AlwaysOnTop;
 
         // 標題列：字型設定
-        _btnColor.Font = new Font(_settings.TitleFontFamily, _settings.TitleFontSize);
-        _btnDelete.Font = new Font(_settings.TitleFontFamily, _settings.TitleFontSize + 1f);
-        _btnNew.Font = new Font(_settings.TitleFontFamily, _settings.TitleFontSize + 3f);
-        _btnClose.Font = new Font(_settings.TitleFontFamily, _settings.TitleFontSize + 2f);
+        _btnColor.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize);
+        _btnDelete.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 1f);
+        _btnNew.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 3f);
+        _btnClose.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 2f);
 
         // 標題列高度：用最大的按鈕字型「實際高度」計算，字型改多大就跟著多高
         using (var probe = new Font(_settings.TitleFontFamily, _settings.TitleFontSize + 3f))
@@ -142,7 +149,17 @@ public class NoteForm : Form
         _btnColor.Width = _btnDelete.Width = _btnNew.Width = _btnClose.Width = btnWidth;
 
         // 內容：字型用全域設定，字級用便箋自己的值
-        _textBox.Font = new Font(_settings.ContentFontFamily, _data.FontSize);
+        _textBox.Font = OwnFont(_settings.ContentFontFamily, _data.FontSize);
+
+        foreach (var f in oldFonts)
+            f.Dispose();
+    }
+
+    private Font OwnFont(string family, float size)
+    {
+        var font = new Font(family, size);
+        _ownedFonts.Add(font);
+        return font;
     }
 
     /// <summary>刪除前先確認（有內容時），確認後才發出 DeleteRequested</summary>
@@ -216,20 +233,19 @@ public class NoteForm : Form
     private static Color Darken(Color c) =>
         Color.FromArgb(c.R * 85 / 100, c.G * 85 / 100, c.B * 85 / 100);
 
-    private static Button MakeTitleButton(string text, string tooltip)
+    private Button MakeTitleButton(string text, string tooltip)
     {
         var btn = new Button
         {
             Text = text,
             Width = 38,
-            FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 10f),
+            FlatStyle = FlatStyle.Flat, // 字型由 ApplySettings 設定
             ForeColor = Color.FromArgb(80, 80, 80),
             TabStop = false,
             Cursor = Cursors.Hand,
         };
         btn.FlatAppearance.BorderSize = 0;
-        new ToolTip().SetToolTip(btn, tooltip);
+        _toolTip.SetToolTip(btn, tooltip);
         return btn;
     }
 
@@ -245,7 +261,8 @@ public class NoteForm : Form
 
         _data.FontSize = size;
         var old = _textBox.Font;
-        _textBox.Font = new Font(old.FontFamily, size);
+        _textBox.Font = OwnFont(_settings.ContentFontFamily, size);
+        _ownedFonts.Remove(old);
         old.Dispose();
         Changed?.Invoke();
     }
@@ -382,7 +399,7 @@ public class NoteForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        // 使用者主動關閉（如 Alt+F4）視同按「×」＝刪除，統一交由管理端處理；
+        // 使用者主動關閉（如 Alt+F4）視同按「✕」＝關閉並保留內容，統一交由管理端處理；
         // 程式結束（ApplicationExitCall）則直接放行
         if (e.CloseReason == CloseReason.UserClosing)
         {
@@ -393,17 +410,46 @@ public class NoteForm : Form
         base.OnFormClosing(e);
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+        {
+            // 控制項已隨表單釋放，這時才能安全釋放它們使用的字型
+            _toolTip.Dispose();
+            foreach (var f in _ownedFonts)
+                f.Dispose();
+            _ownedFonts.Clear();
+        }
+    }
+
     // ---------- 工具 ----------
 
-    /// <summary>確保還原的視窗落在可見螢幕範圍內（例如拔掉外接螢幕後）</summary>
+    /// <summary>
+    /// 確保還原的視窗抓得回來（例如拔掉外接螢幕後）：
+    /// 標題列有一段落在某個螢幕的工作區內就維持原位（允許跨螢幕擺放）；
+    /// 否則移進最近的螢幕。不用 VirtualScreen 外框判斷，因為螢幕排成 L 形
+    /// 或大小不一時，外框內仍有不屬於任何螢幕的死角。
+    /// </summary>
     private static Rectangle ClampToScreen(Rectangle r)
     {
         if (r.Width < 160) r.Width = 640;
         if (r.Height < 120) r.Height = 480;
 
-        var screen = SystemInformation.VirtualScreen;
-        r.X = Math.Max(screen.Left, Math.Min(r.X, screen.Right - r.Width));
-        r.Y = Math.Max(screen.Top, Math.Min(r.Y, screen.Bottom - r.Height));
+        var titleStrip = new Rectangle(r.X, r.Y, r.Width, TitleHeight);
+        bool reachable = Screen.AllScreens.Any(s =>
+        {
+            var visible = Rectangle.Intersect(s.WorkingArea, titleStrip);
+            return visible.Width >= 60 && visible.Height >= 10; // 至少露出一段可拖曳的標題列
+        });
+        if (reachable)
+            return r;
+
+        var wa = Screen.FromRectangle(r).WorkingArea;
+        r.Width = Math.Min(r.Width, wa.Width);
+        r.Height = Math.Min(r.Height, wa.Height);
+        r.X = Math.Max(wa.Left, Math.Min(r.X, wa.Right - r.Width));
+        r.Y = Math.Max(wa.Top, Math.Min(r.Y, wa.Bottom - r.Height));
         return r;
     }
 }

@@ -95,6 +95,10 @@ public class TrayApplicationContext : ApplicationContext
             CreateNote(null); // 第一次啟動：給一張預設便箋
 
         UpdateTrayState();
+
+        // 存檔讀取失敗（已備份或暫停寫檔）：告知使用者，不要默默以空白狀態啟動
+        if (NoteStorage.LoadWarning is { } warning)
+            _trayIcon.ShowBalloonTip(8000, "MemoTack", warning, ToolTipIcon.Warning);
     }
 
     /// <summary>
@@ -215,12 +219,15 @@ public class TrayApplicationContext : ApplicationContext
     /// <summary>開啟設定視窗；確定後套用到所有便箋並存檔</summary>
     private void OpenSettings()
     {
+        float oldContentSize = _settings.ContentFontSize;
         using var dlg = new SettingsForm(_settings);
         if (dlg.ShowDialog() != DialogResult.OK)
             return;
 
+        // 只有內容字級真的改了，才覆蓋各便箋用 Ctrl+滾輪 做的個別調整
+        bool contentSizeChanged = Math.Abs(_settings.ContentFontSize - oldContentSize) > 0.01f;
         foreach (var n in _notes)
-            n.ApplySettings(resetContentSize: true); // 內容字級重設為新設定值
+            n.ApplySettings(resetContentSize: contentSizeChanged);
 
         ApplyHotkey(); // 快捷鍵可能改了，重新註冊
         SaveAll();
@@ -271,7 +278,25 @@ public class TrayApplicationContext : ApplicationContext
         // 自癒式切換：Win+D「顯示桌面」會把便箋最小化，單純 Show() 救不回來。
         // 只要有任何便箋被隱藏或最小化，這次操作一律視為「全部還原顯示」；
         // 全部都正常顯示時，才執行隱藏。
-        bool show = _notes.Any(n => !n.Visible || n.WindowState == FormWindowState.Minimized);
+        SetNotesVisible(_notes.Any(n => !n.Visible || n.WindowState == FormWindowState.Minimized));
+    }
+
+    /// <summary>
+    /// 使用者再次開啟 MemoTack（第二個實例會通知這裡）：把便箋叫到前景，
+    /// 讓使用者知道程式已在執行。沒有開啟中的便箋時新增一張。
+    /// </summary>
+    public void ShowAllNotes()
+    {
+        if (_exiting)
+            return;
+        if (_notes.Count == 0)
+            CreateNote(null);
+        else
+            SetNotesVisible(true);
+    }
+
+    private void SetNotesVisible(bool show)
+    {
         _notesVisible = show;
 
         foreach (var n in _notes)
@@ -313,6 +338,23 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     private void OnSessionEnding(object? sender, SessionEndingEventArgs e) => SaveAll();
+
+    /// <summary>
+    /// 未預期的 UI 例外：先搶救存檔再提示，程式繼續執行，不讓一個 bug 帶走未存的內容。
+    /// </summary>
+    public void HandleUnhandledException(Exception ex)
+    {
+        try
+        {
+            if (!_exiting) SaveAll();
+        }
+        catch
+        {
+            // 狀態已經不正常，存不了就算了，至少把錯誤告訴使用者
+        }
+        MessageBox.Show($"MemoTack 發生未預期的錯誤，已嘗試存檔。\n\n{ex.Message}",
+            "MemoTack", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
 
     private void ExitApp()
     {

@@ -25,6 +25,7 @@
 - Windows 11 自動套用原生圓角視窗
 - 設定「登入 Windows 時自動啟動」：寫入 HKCU Run 登錄值（免系統管理員權限），
   執行檔搬家後下次啟動會自動修正路徑；單一實例保護，不會重複開啟
+  （已在執行時再次開啟 MemoTack，會把便箋叫到前景）
 
 ## 資料保存
 
@@ -33,6 +34,8 @@
 - **即時儲存**：移動、縮放、打字、換色後靜止 1.5 秒自動寫檔（防抖），
   程式被強制關閉也不會遺失；結束程式與 Windows 關機/登出時也會存檔
 - 下次啟動自動還原；按 `✕` 關閉的便箋資料仍保留，按 `🗑` 刪除的才會消失
+- 存檔損毀或無法讀取時，原檔會改名備份為 `notes.json.corrupt-<時間>` 並以氣泡提示，
+  不會被新資料覆蓋；連備份都失敗時，該次執行暫停寫檔以保護原檔
 
 ## 建置與執行
 
@@ -50,13 +53,13 @@ dotnet run            # 執行（啟動後看系統匣圖示）
 一鍵建置（需要安裝 [Inno Setup](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-.\build.bat                    # 直接雙擊也行（預設版本 1.0.0）
-.\build.bat -Version 1.1.0     # 指定版本號
-.\build.bat -SkipPublish       # 只重編安裝程式（跳過 publish）
+.\build-installer.ps1                  # 版本號取自 MemoTack.csproj
+.\build-installer.ps1 -Version 1.1.0   # 指定版本號
+.\build-installer.ps1 -SkipPublish     # 只重編安裝程式（跳過 publish）
 # 產出：installer\MemoTack-Setup-<版本>.exe
 ```
 
-（`build.bat` 只是轉發器，實際邏輯在 `build-installer.ps1`）
+（若執行原則擋下腳本，改用 `powershell -ExecutionPolicy Bypass -File .\build-installer.ps1`）
 
 流程：`dotnet publish` 做出自包含單一執行檔（使用者機器**不需**安裝 .NET），
 再用 Inno Setup 編譯 `installer.iss` 成安裝程式。

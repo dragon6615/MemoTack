@@ -15,6 +15,7 @@ public class SettingsForm : Form
     private readonly CheckBox _autoStart;
     private readonly TextBox _hotkeyBox;
     private readonly TextBox _restoreHotkeyBox;
+    private readonly ToolTip _toolTip = new();
 
     public SettingsForm(AppSettings settings)
     {
@@ -27,7 +28,7 @@ public class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        TopMost = true; // 便箋都是置頂，設定視窗也要置頂才不會被蓋住
+        TopMost = true; // 便箋可能設為置頂，設定視窗也要置頂才不會被蓋住
         Font = new Font("Segoe UI", 9f);
 
         // 依 DPI 縮放視窗與控制項，避免高 DPI 下文字被截斷
@@ -66,8 +67,8 @@ public class SettingsForm : Form
             Dock = DockStyle.Fill,
             PlaceholderText = "點此按下組合鍵",
         };
-        new ToolTip().SetToolTip(_hotkeyBox,
-            "點一下欄位，直接按下想要的組合鍵（如 Alt+F12）。\nBackspace 或 Esc 清空＝停用。\n被系統占用的組合（如 Win+S）會註冊失敗。");
+        _toolTip.SetToolTip(_hotkeyBox,
+            "點一下欄位，直接按下想要的組合鍵（如 Alt+F10）。\nF12 被 Windows 保留，不可使用。\nBackspace 或 Esc 清空＝停用。\n被系統占用的組合（如 Win+S）會註冊失敗。");
 
         _restoreHotkeyBox = new HotkeyBox
         {
@@ -75,7 +76,7 @@ public class SettingsForm : Form
             Dock = DockStyle.Fill,
             PlaceholderText = "點此按下組合鍵",
         };
-        new ToolTip().SetToolTip(_restoreHotkeyBox, "一次還原所有已關閉的便箋。");
+        _toolTip.SetToolTip(_restoreHotkeyBox, "一次還原所有已關閉的便箋。");
 
         AddRow(table, "標題列字型", _titleFont);
         AddRow(table, "標題列大小 (pt)", _titleSize);
@@ -116,6 +117,17 @@ public class SettingsForm : Form
 
         AcceptButton = btnOk;
         CancelButton = btnCancel;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        var font = Font; // 建構子自行建立的字型，Form 不會替我們釋放
+        base.Dispose(disposing);
+        if (disposing)
+        {
+            _toolTip.Dispose();
+            font.Dispose();
+        }
     }
 
     /// <summary>把 UI 上的值寫回 AppSettings（按「確定」時呼叫）</summary>

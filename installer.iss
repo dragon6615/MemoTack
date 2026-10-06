@@ -1,5 +1,5 @@
 ; MemoTack 安裝程式腳本（Inno Setup）
-; 先執行 dotnet publish（或直接跑 build-installer.bat），再用 Inno Setup 編譯本檔
+; 先執行 dotnet publish（或直接跑 build-installer.ps1），再用 Inno Setup 編譯本檔
 
 #define MyAppName "MemoTack"
 ; 版本號由 build-installer.ps1 以 /DAppVersion=x.y.z 傳入；直接用 IDE 編譯時採用下面預設值
