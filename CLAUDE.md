@@ -48,7 +48,7 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 - 有舊版設定遷移邏輯(如舊預設快捷鍵改為 `Alt+F10`),改預設值時要考慮既有使用者的 JSON。
 - 便箋不出現在工具列與 Alt+Tab;Win+D 收起便箋是系統行為、無法攔截,屬已知限制。所以「叫出便箋」(單擊系統匣、`Alt+F10`、再次開啟程式)要用 `NoteForm.RaiseToTop()`——`BringToFront()` 只在同程式內有效。
 - 版面不寫死尺寸:便箋最小寬度由 `UpdateMinimumSize()` 依按鈕實際寬度計算;對話框繼承 `StyledDialog` 用 AutoSize 版面、`AutoScaleMode.None`、間距經 `Dpi()` 換算。寫死像素在 150% 縮放下會切字或讓按鈕互相覆蓋。
-- `MarkdownTextBox` 的約定:以 `\n` 分隔的「段落」為單位處理——RichTextBox 的 `GetLineFromCharIndex` 等是自動換行後的顯示行,不能拿來對應 markdown 行。輸入法組字中不得改選取或格式(會中斷注音/倉頡組字)。套用格式要包在 TOM `Undo(tomSuspend/tomResume)` 裡,否則 Ctrl+Z 會先復原格式。程式直接設定 `Text` 時整篇重新套用,打字時只處理游標附近段落。不可在 `TextChanged` 裡同步再改文字(RichEdit 還在處理那次變更,只會換掉一部分),要 `BeginInvoke` 排到之後。拖曳或 Shift 選取中不重新套用格式(會改動選取範圍、打斷選取)。
+- `MarkdownTextBox` 的約定:以 `\n` 分隔的「段落」為單位處理——RichTextBox 的 `GetLineFromCharIndex` 等是自動換行後的顯示行,不能拿來對應 markdown 行。輸入法組字中不得改選取或格式(會中斷注音/倉頡組字)。套用格式要包在 TOM `Undo(tomSuspend/tomResume)` 裡,否則 Ctrl+Z 會先復原格式。程式直接設定 `Text` 時整篇重新套用,打字時只處理游標附近段落。不可在 `TextChanged` 裡同步再改文字(RichEdit 還在處理那次變更,只會換掉一部分),要 `BeginInvoke` 排到之後。拖曳或 Shift 選取中不重新套用格式(會改動選取範圍、打斷選取)。行首 `- `/`- [ ]` 轉成 •/☐ 有兩道:打字當下(`ConvertTypedPrefix`)與游標離開該行時補轉(`ConvertLeftoverPrefixes`),確保畫面與重新載入後(`ToEditor`)一致。
 - 標題列的按鈕與標籤「按住移動超過系統拖曳門檻才開始拖曳視窗」,不是按下就拖——否則按鈕點擊與名稱雙擊都收不到。
 
 ## 專案慣例

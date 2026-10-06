@@ -123,7 +123,7 @@ public sealed class MarkdownTextBox : RichTextBox
         int caret = SelectionStart;
         int prev = ParagraphAt(caret).Start - 1;
         Format(Math.Max(0, prev), caret);
-        _active = ActiveRange();
+        SetActive(ActiveRange()); // 按 Enter 換到下一行時，上一行就離開了
 
         // 不能在文字變更通知裡同步再改文字（RichEdit 還在處理這次變更，會只換掉一部分），排到之後再做
         if (TypedPrefixAt(caret) != null)
@@ -185,17 +185,92 @@ public sealed class MarkdownTextBox : RichTextBox
         if (now == _active)
             return;
         var old = _active;
-        _active = now;
+        SetActive(now);
         if (old.Start >= 0)
             Format(Math.Min(old.Start, _text.Length), Math.Min(old.End, _text.Length));
         if (now.Start >= 0)
             Format(now.Start, now.End);
     }
 
+    /// <summary>更新目前段落；有段落被離開時，排程檢查是否有沒轉換到的清單／待辦寫法</summary>
+    private void SetActive((int Start, int End) now)
+    {
+        if (now == _active)
+            return;
+        bool left = _active.Start >= 0;
+        _active = now;
+        if (left && !_convertScheduled && !_converting)
+        {
+            _convertScheduled = true;
+            BeginInvoke(ConvertLeftoverPrefixes);
+        }
+    }
+
+    private bool _convertScheduled;
+    private bool _converting;
+
+    /// <summary>
+    /// 保險：自動轉換只在「行首剛打完『- 』且游標就在空白後」那一刻觸發，打字順序不同
+    /// （例如先打空白再回頭補 -）就不會轉，畫面會留著「- 」，重開便箋後卻變成「•」。
+    /// 所以游標離開的行，若仍是「- 」「* 」「- [ ]」寫法，就在這裡補轉成 •／☐，跟載入時的結果一致。
+    /// </summary>
+    private void ConvertLeftoverPrefixes()
+    {
+        _convertScheduled = false;
+        if (IsDisposed || !IsHandleCreated || _formatting || _composing || IsImeComposing())
+            return;
+
+        var active = ActiveRange();
+        int selStart = SelectionStart, selLength = SelectionLength;
+        var paragraphs = new List<(int Start, int Length)>();
+        for (int pos = 0; pos <= _text.Length;)
+        {
+            int end = _text.IndexOf('\n', pos);
+            if (end < 0) end = _text.Length;
+            paragraphs.Add((pos, end - pos));
+            pos = end + 1;
+        }
+
+        _converting = true;
+        try
+        {
+            // 從後往前改，前面段落的位置才不會被影響
+            for (int i = paragraphs.Count - 1; i >= 0; i--)
+            {
+                var (start, length) = paragraphs[i];
+                if (start >= active.Start && start <= active.End)
+                    continue; // 正在編輯的行不動
+                string line = _text.Substring(start, length);
+                string converted = MarkdownSyntax.ToEditor(line);
+                if (converted == line)
+                    continue;
+
+                // ToEditor 只改行首前綴：去掉相同的結尾，剩下的就是新舊前綴
+                int same = 0;
+                while (same < line.Length && same < converted.Length &&
+                       line[^(same + 1)] == converted[^(same + 1)])
+                    same++;
+                int oldLength = line.Length - same;
+                string newPrefix = converted[..(converted.Length - same)];
+
+                Select(start, oldLength);
+                SelectedText = newPrefix; // 一般的文字編輯，可以 Ctrl+Z 還原
+                if (start < selStart)
+                    selStart += newPrefix.Length - oldLength;
+            }
+        }
+        finally
+        {
+            Select(selStart, selLength);
+            _converting = false;
+        }
+        UpdateActive(); // 轉換過程中選取範圍有變動，重新對齊目前段落的符號顯示
+    }
+
     protected override void OnSelectionChanged(EventArgs e)
     {
         base.OnSelectionChanged(e);
-        if (_formatting)
+        if (_formatting || _converting)
             return;
         // 拖曳或 Shift 選取中重新套用格式會改動選取範圍、打斷選取，等放開再做
         if (MouseButtons != MouseButtons.None || (ModifierKeys & Keys.Shift) != 0)
