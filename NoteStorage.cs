@@ -92,6 +92,7 @@ public static class NoteStorage
         s.ContentFontSize = ValidFontSize(s.ContentFontSize, defaults.ContentFontSize);
         s.Hotkey ??= string.Empty;
         s.RestoreHotkey ??= string.Empty;
+        s.SkippedVersion ??= string.Empty;
 
         foreach (var n in state.Notes)
         {

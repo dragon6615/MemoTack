@@ -29,6 +29,12 @@ public class AppSettings
 
     /// <summary>還原所有已關閉便箋的全域快捷鍵。留空 = 停用。</summary>
     public string RestoreHotkey { get; set; } = "Alt+F11";
+
+    /// <summary>自動檢查更新（啟動後與每天一次，連線到 GitHub）；舊版存檔沒有這個欄位時預設開啟</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>使用者選了「略過這個版本」的版本號（x.y.z）；自動檢查時不再詢問這一版</summary>
+    public string SkippedVersion { get; set; } = string.Empty;
 }
 
 /// <summary>

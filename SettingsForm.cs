@@ -13,6 +13,7 @@ public class SettingsForm : StyledDialog
     private readonly NumericUpDown _contentSize;
     private readonly CheckBox _alwaysOnTop;
     private readonly CheckBox _autoStart;
+    private readonly CheckBox _checkUpdates;
     private readonly TextBox _hotkeyBox;
     private readonly TextBox _restoreHotkeyBox;
     private readonly ToolTip _toolTip = new();
@@ -32,6 +33,7 @@ public class SettingsForm : StyledDialog
 
         _alwaysOnTop = MakeCheck("便箋顯示在最上層（置頂）", settings.AlwaysOnTop);
         _autoStart = MakeCheck("登入 Windows 時自動啟動", StartupManager.IsEnabled()); // 以登錄實際狀態為準
+        _checkUpdates = MakeCheck("自動檢查更新", settings.CheckForUpdates);
 
         _hotkeyBox = MakeHotkeyBox(settings.Hotkey);
         _toolTip.SetToolTip(_hotkeyBox, "正在用其他程式時叫出便箋；正在操作便箋時隱藏。");
@@ -54,6 +56,8 @@ public class SettingsForm : StyledDialog
 
         AddSection(body, "啟動", first: false);
         AddWide(body, _autoStart);
+        AddWide(body, _checkUpdates);
+        AddWide(body, MakeHint("啟動後與每天一次連線到 GitHub 檢查；有新版會先詢問，不會自動安裝。\n也可以從系統匣選單「檢查更新...」手動檢查。"));
 
         // ---- 確定 / 取消 ----
         var btnOk = MakeButton("確定", primary: true);
@@ -80,6 +84,7 @@ public class SettingsForm : StyledDialog
         _settings.Hotkey = _hotkeyBox.Text.Trim();
         _settings.RestoreHotkey = _restoreHotkeyBox.Text.Trim();
         StartupManager.SetEnabled(_autoStart.Checked); // 直接寫入/移除登錄值
+        _settings.CheckForUpdates = _checkUpdates.Checked;
     }
 
     /// <summary>x.y.z（不含 .NET 附加的 +commit 雜湊）</summary>

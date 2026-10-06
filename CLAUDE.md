@@ -29,6 +29,8 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 
 正式發佈走 GitHub Actions:推送 `v*` tag 即自動建置並發佈 Release(`.github/workflows/release.yml`)。發版前必須先在 `CHANGELOG.md` 寫好該版本段落(標題 `## [x.y.z] - YYYY-MM-DD`,內容寫給使用者看、不是 commit 清單)——Release 說明由 `.github/release-notes.ps1` 從中取出,找不到段落會在建置前中止。可先用 `pwsh .github/release-notes.ps1 -Version x.y.z` 預覽。版本號集中在 `MemoTack.csproj` 的 `<Version>`,建置腳本會以 `-p:Version` 覆寫。
 
+自動更新(`UpdateChecker`)依賴發佈流程的約定,改發佈流程時不能破壞:安裝檔名必須是 `MemoTack-Setup-x.y.z.exe`、Release 說明要有「64 位 SHA-256 + 兩個空白 + 檔名」那一行(`.github/release-notes.ps1` 產生),`---` 之前是給使用者看的更新內容(更新視窗只顯示這段)。版本比較用組件版本,所以 csproj 的 `<AssemblyVersion>` 要跟著 `<Version>` 一起改。`installer.iss` 有一個 `skipifnotsilent` 的 [Run] 項目負責靜默安裝(自動更新)後重新開啟程式。
+
 ## 架構
 
 程式沒有主視窗:`Program.cs` 以 `ApplicationContext` 模式啟動 `TrayApplicationContext`,它是全域樞紐——持有系統匣圖示、所有 `NoteForm` 實例(`_notes`)與已關閉便箋的資料(`_closedNotes`),並負責啟動還原、結束存檔、全域快捷鍵註冊。

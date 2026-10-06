@@ -8,11 +8,26 @@ internal static class Program
     /// <summary>第二個實例用來通知第一個實例「把便箋叫出來」的事件名稱</summary>
     private const string ShowSignalName = @"Local\MemoTack_ShowNotes";
 
+    private static Mutex? s_singleInstance;
+
+    /// <summary>
+    /// 提早放開單一實例鎖（自動更新時，在啟動安裝程式之前呼叫）：
+    /// 安裝程式以這個 mutex（installer.iss 的 AppMutex）判斷 MemoTack 是否還在執行，
+    /// 靜默安裝時若程式還沒完全結束會直接中止，所以不能等到程序結束才放開。必須在 UI 執行緒呼叫。
+    /// </summary>
+    public static void ReleaseSingleInstance()
+    {
+        try { s_singleInstance?.ReleaseMutex(); }
+        catch (ApplicationException) { /* 已經放開過 */ }
+        s_singleInstance = null;
+    }
+
     [STAThread]
     private static void Main()
     {
         // 單一實例保護：避免「開機自動啟動」+「手動開啟」同時跑兩份
         using var mutex = new Mutex(initiallyOwned: true, @"Local\MemoTack_SingleInstance", out bool createdNew);
+        s_singleInstance = createdNew ? mutex : null;
         if (!createdNew)
         {
             // 已有一份在執行：通知它顯示便箋後離開，否則便箋隱藏時使用者會以為程式沒反應

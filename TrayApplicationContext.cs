@@ -15,6 +15,8 @@ public class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _toggleMenu;
     private readonly ToolStripMenuItem _reminderMenu;
     private readonly System.Windows.Forms.Timer _reminderTimer;
+    private readonly System.Windows.Forms.Timer _updateTimer;
+    private bool _checkingUpdate;
     private readonly Icon _iconNormal = CreateTrayIcon(hidden: false); // 黃色：便箋顯示中
     private readonly Icon _iconHidden = CreateTrayIcon(hidden: true);  // 灰色：便箋隱藏中
     private readonly AppSettings _settings;
@@ -60,6 +62,7 @@ public class TrayApplicationContext : ApplicationContext
         menu.Items.Add(_reminderMenu);
 
         menu.Items.Add("設定...", null, (_, _) => OpenSettings());
+        menu.Items.Add("檢查更新...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("結束", null, (_, _) => ExitApp());
         menu.Opening += (_, _) =>
@@ -91,6 +94,14 @@ public class TrayApplicationContext : ApplicationContext
         // ---- 提醒：每 15 秒檢查一次；從睡眠喚醒時立刻補檢查 ----
         _reminderTimer = new System.Windows.Forms.Timer { Interval = 15_000 };
         _reminderTimer.Tick += (_, _) => CheckReminders();
+
+        // ---- 自動檢查更新：啟動後 30 秒（不拖慢開機），之後每天一次（很多人好幾天不關程式）----
+        _updateTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+        _updateTimer.Tick += async (_, _) =>
+        {
+            _updateTimer.Interval = 24 * 60 * 60 * 1000;
+            await CheckForUpdatesAsync(manual: false);
+        };
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         // ---- 全域快捷鍵 ----
@@ -120,6 +131,7 @@ public class TrayApplicationContext : ApplicationContext
         // 啟動時先檢查一次：程式沒在執行期間錯過的提醒立刻補發
         CheckReminders();
         _reminderTimer.Start();
+        _updateTimer.Start();
     }
 
     /// <summary>
@@ -328,6 +340,80 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>開啟設定視窗；確定後套用到所有便箋並存檔</summary>
+    /// <summary>
+    /// 檢查更新。自動檢查：設定關閉、沒網路、已略過這個版本時都安靜跳過；
+    /// 手動檢查（系統匣選單）：一律告訴使用者結果。發現新版一律先詢問，不會自己安裝。
+    /// </summary>
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_exiting || _checkingUpdate || (!manual && !_settings.CheckForUpdates))
+            return;
+
+        _checkingUpdate = true;
+        try
+        {
+            UpdateInfo? info;
+            try
+            {
+                info = await UpdateChecker.CheckAsync();
+            }
+            catch (Exception)
+            {
+                if (manual)
+                    MessageBox.Show("無法連線到 GitHub 檢查更新，請確認網路連線後再試。", "MemoTack",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (info == null)
+            {
+                if (manual)
+                    MessageBox.Show($"目前已是最新版本（{UpdateChecker.CurrentVersion.ToString(3)}）。", "MemoTack",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!manual && info.Version.ToString(3) == _settings.SkippedVersion)
+                return; // 使用者選過「略過這個版本」；手動檢查時仍會顯示
+
+            using var dialog = new UpdateForm(info);
+            dialog.ShowDialog();
+            switch (dialog.Result)
+            {
+                case UpdateForm.Choice.Update when dialog.InstallerPath != null:
+                    InstallUpdate(dialog.InstallerPath);
+                    break;
+                case UpdateForm.Choice.Skip:
+                    _settings.SkippedVersion = info.Version.ToString(3);
+                    SaveAll();
+                    break;
+            }
+        }
+        finally
+        {
+            _checkingUpdate = false;
+        }
+    }
+
+    /// <summary>
+    /// 先存檔、放開單一實例鎖，再啟動安裝程式並結束 MemoTack；
+    /// 安裝程式會等 MemoTack 結束後覆蓋檔案，完成後重新開啟它（installer.iss）。
+    /// </summary>
+    private void InstallUpdate(string installerPath)
+    {
+        SaveAll();
+        Program.ReleaseSingleInstance();
+        try
+        {
+            UpdateChecker.RunInstaller(installerPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("無法啟動安裝程式：" + ex.Message, "MemoTack", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return; // 單一實例鎖已放開，但程式照常執行；下次啟動會重新取得
+        }
+        ExitApp();
+    }
+
     private void OpenSettings()
     {
         float oldContentSize = _settings.ContentFontSize;
@@ -492,6 +578,8 @@ public class TrayApplicationContext : ApplicationContext
         _saveTimer.Dispose();
         _reminderTimer.Stop();
         _reminderTimer.Dispose();
+        _updateTimer.Stop();
+        _updateTimer.Dispose();
         SaveAll();
 
         SystemEvents.SessionEnding -= OnSessionEnding;

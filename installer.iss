@@ -64,6 +64,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
     Flags: nowait postinstall skipifsilent
+; 靜默安裝（自動更新）完成後重新開啟 MemoTack；runasoriginaluser：不要以系統管理員身分執行便箋程式
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser skipifnotsilent
 
 ; 註：使用者資料（便箋內容 %APPDATA%\MemoTack\notes.json）解除安裝時刻意保留，
 ; 重新安裝後便箋會自動回來；若要一併刪除，取消下面註解

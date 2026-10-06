@@ -217,7 +217,7 @@ public sealed class MarkdownTextBox : RichTextBox
     private void ConvertLeftoverPrefixes()
     {
         _convertScheduled = false;
-        if (IsDisposed || !IsHandleCreated || _formatting || _composing || IsImeComposing())
+        if (ReadOnly || IsDisposed || !IsHandleCreated || _formatting || _composing || IsImeComposing())
             return;
 
         var active = ActiveRange();
@@ -472,7 +472,7 @@ public sealed class MarkdownTextBox : RichTextBox
     /// <summary>切換勾選狀態：☐ ↔ ☑（「[ ]」寫法則只改中間那個字）。是一般的文字編輯，可以 Ctrl+Z 復原</summary>
     private bool TryToggleCheckbox(Point p)
     {
-        if (ModifierKeys != Keys.None || CheckboxAt(p) is not { } hit)
+        if (ReadOnly || ModifierKeys != Keys.None || CheckboxAt(p) is not { } hit)
             return false;
 
         Focus();
@@ -495,6 +495,10 @@ public sealed class MarkdownTextBox : RichTextBox
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        // 唯讀（例如更新說明）：不做任何會改文字的自訂操作；RichEdit 內建的編輯鍵本身會被唯讀擋下
+        if (ReadOnly)
+            return IsRichEditFormattingShortcut(keyData) || base.ProcessCmdKey(ref msg, keyData);
+
         switch (keyData)
         {
             case Keys.Control | Keys.V:
