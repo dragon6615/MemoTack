@@ -8,6 +8,9 @@ public class NoteData
     /// <summary>便箋唯一識別碼</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>便箋名稱（顯示在標題列，雙擊修改）；空字串 = 未命名</summary>
+    public string Title { get; set; } = string.Empty;
+
     /// <summary>文字內容</summary>
     public string Content { get; set; } = string.Empty;
 
@@ -25,4 +28,26 @@ public class NoteData
 
     /// <summary>是否開啟中。false = 已關閉（保留資料，可從系統匣選單再開啟）</summary>
     public bool IsOpen { get; set; } = true;
+
+    /// <summary>提醒的原定時間（本機時間）；null = 未設定提醒。重複提醒以此為基準往後推算</summary>
+    public DateTime? ReminderAt { get; set; }
+
+    /// <summary>提醒重複方式</summary>
+    public ReminderRepeat ReminderRepeat { get; set; } = ReminderRepeat.None;
+
+    /// <summary>按「延後」後的響鈴時間；與 ReminderAt 分開存，延後才不會改掉重複提醒的基準時間</summary>
+    public DateTime? ReminderSnoozeUntil { get; set; }
+
+    /// <summary>
+    /// 選單、通知等處用來辨識便箋的文字：有名稱用名稱，否則用內容第一個非空行；超過長度加「…」。
+    /// （方法不會被序列化進 JSON）
+    /// </summary>
+    public string DisplayName(int maxLength)
+    {
+        string text = !string.IsNullOrWhiteSpace(Title)
+            ? Title.Trim()
+            : Content.Split('\n', '\r').FirstOrDefault(s => s.Trim().Length > 0)?.Trim() ?? "";
+        if (text.Length == 0) return "（空白便箋）";
+        return text.Length <= maxLength ? text : text[..maxLength] + "…";
+    }
 }

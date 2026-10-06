@@ -13,6 +13,8 @@ public class TrayApplicationContext : ApplicationContext
     private readonly List<NoteData> _closedNotes = new(); // 已關閉但保留的便箋
     private readonly ToolStripMenuItem _closedMenu;
     private readonly ToolStripMenuItem _toggleMenu;
+    private readonly ToolStripMenuItem _reminderMenu;
+    private readonly System.Windows.Forms.Timer _reminderTimer;
     private readonly Icon _iconNormal = CreateTrayIcon(hidden: false); // 黃色：便箋顯示中
     private readonly Icon _iconHidden = CreateTrayIcon(hidden: true);  // 灰色：便箋隱藏中
     private readonly AppSettings _settings;
@@ -54,12 +56,16 @@ public class TrayApplicationContext : ApplicationContext
         _closedMenu = new ToolStripMenuItem("已關閉的便箋"); // 子選單內容於開啟選單時重建
         menu.Items.Add(_closedMenu);
 
+        _reminderMenu = new ToolStripMenuItem("即將到來的提醒"); // 子選單內容於開啟選單時重建
+        menu.Items.Add(_reminderMenu);
+
         menu.Items.Add("設定...", null, (_, _) => OpenSettings());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("結束", null, (_, _) => ExitApp());
         menu.Opening += (_, _) =>
         {
             RebuildClosedMenu();
+            RebuildReminderMenu();
             _toggleMenu.Text = _notesVisible ? "隱藏所有便箋" : "顯示所有便箋";
             _toggleMenu.Enabled = _notes.Count > 0;
         };
@@ -71,16 +77,27 @@ public class TrayApplicationContext : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _trayIcon.DoubleClick += (_, _) => ToggleAllNotes();
+        // 單擊 = 把便箋叫到最前面（非置頂模式下便箋常被其他視窗蓋住，又不在工具列與 Alt+Tab 裡）。
+        // 刻意不用雙擊：雙擊的第一下會先觸發單擊，兩個動作混在一起反而難以預期
+        _trayIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) ShowAllNotes();
+        };
+        _trayIcon.BalloonTipClicked += (_, _) => FocusRingingNote();
 
         // Windows 關機/登出時搶先存檔
         SystemEvents.SessionEnding += OnSessionEnding;
+
+        // ---- 提醒：每 15 秒檢查一次；從睡眠喚醒時立刻補檢查 ----
+        _reminderTimer = new System.Windows.Forms.Timer { Interval = 15_000 };
+        _reminderTimer.Tick += (_, _) => CheckReminders();
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         // ---- 全域快捷鍵 ----
         _hotkey = new HotkeyManager();
         _hotkey.Pressed += id =>
         {
-            if (id == HotkeyToggleId) ToggleAllNotes();
+            if (id == HotkeyToggleId) ToggleFromHotkey();
             else if (id == HotkeyRestoreId) RestoreAllClosed();
         };
         ApplyHotkey();
@@ -99,6 +116,10 @@ public class TrayApplicationContext : ApplicationContext
         // 存檔讀取失敗（已備份或暫停寫檔）：告知使用者，不要默默以空白狀態啟動
         if (NoteStorage.LoadWarning is { } warning)
             _trayIcon.ShowBalloonTip(8000, "MemoTack", warning, ToolTipIcon.Warning);
+
+        // 啟動時先檢查一次：程式沒在執行期間錯過的提醒立刻補發
+        CheckReminders();
+        _reminderTimer.Start();
     }
 
     /// <summary>
@@ -112,7 +133,7 @@ public class TrayApplicationContext : ApplicationContext
 
         string text = $"MemoTack — {_notes.Count} 張便箋";
         if (_closedNotes.Count > 0) text += $"，{_closedNotes.Count} 張已關閉";
-        if (hidden) text += "（隱藏中，雙擊顯示）";
+        if (hidden) text += "（隱藏中，點一下顯示）";
         _trayIcon.Text = text.Length <= 63 ? text : text[..63]; // NotifyIcon.Text 長度上限保護
     }
 
@@ -120,8 +141,9 @@ public class TrayApplicationContext : ApplicationContext
 
     /// <summary>
     /// 建立一張便箋並顯示。data 為 null 時建立新便箋（可指定位置）。
+    /// activate=false 時顯示但不搶鍵盤焦點（提醒自動開啟已關閉的便箋時用）。
     /// </summary>
-    private void CreateNote(NoteData? data, Point? location = null)
+    private NoteForm CreateNote(NoteData? data, Point? location = null, bool activate = true)
     {
         if (data == null)
         {
@@ -150,15 +172,21 @@ public class TrayApplicationContext : ApplicationContext
         form.Changed += ScheduleSave; // 移動/縮放/內容/顏色變更 → 防抖存檔
 
         _notes.Add(form);
-        form.Show();
+        if (activate) form.Show();
+        else form.ShowWithoutFocus();
         _notesVisible = true;
         UpdateTrayState();
         ScheduleSave();
+        return form;
     }
 
     /// <summary>關閉便箋：保留資料，之後可從系統匣「已關閉的便箋」再開啟</summary>
     private void CloseNote(NoteForm form)
     {
+        // 響鈴中按 ✕ 視同「完成」：否則提醒仍到期，15 秒後便箋又會被自動打開
+        if (form.IsRinging)
+            form.CompleteReminder();
+
         var data = form.ToData(); // 先把最新狀態寫回資料
         data.IsOpen = false;
         _closedNotes.Add(data);
@@ -198,7 +226,7 @@ public class TrayApplicationContext : ApplicationContext
 
         foreach (var data in _closedNotes.ToList())
         {
-            var item = new ToolStripMenuItem(MakePreview(data.Content));
+            var item = new ToolStripMenuItem(data.DisplayName(16));
             item.Click += (_, _) =>
             {
                 _closedNotes.Remove(data);
@@ -208,12 +236,95 @@ public class TrayApplicationContext : ApplicationContext
         }
     }
 
-    /// <summary>取內容第一行前 16 字當選單預覽文字</summary>
-    private static string MakePreview(string content)
+    /// <summary>重建「即將到來的提醒」子選單：開啟中與已關閉的便箋都列出，依響鈴時間排序</summary>
+    private void RebuildReminderMenu()
     {
-        string firstLine = content.Split('\n', '\r').FirstOrDefault(s => s.Trim().Length > 0)?.Trim() ?? "";
-        if (firstLine.Length == 0) return "（空白便箋）";
-        return firstLine.Length <= 16 ? firstLine : firstLine[..16] + "…";
+        _reminderMenu.DropDownItems.Clear();
+        var now = DateTime.Now;
+        var upcoming = _notes.Select(n => (Form: (NoteForm?)n, Data: n.ToData()))
+            .Concat(_closedNotes.Select(d => (Form: (NoteForm?)null, Data: d)))
+            .Select(x => (x.Form, x.Data, Due: ReminderSchedule.DueTime(x.Data)))
+            .Where(x => x.Due != null)
+            .OrderBy(x => x.Due)
+            .ToList();
+
+        _reminderMenu.Enabled = upcoming.Count > 0;
+        foreach (var (form, data, due) in upcoming)
+        {
+            string repeat = data.ReminderRepeat == ReminderRepeat.None ? "" : " ↻";
+            var item = new ToolStripMenuItem(
+                $"{ReminderSchedule.FormatShort(due!.Value, now)}{repeat}　{data.DisplayName(16)}");
+            item.Click += (_, _) => OpenNote(form, data);
+            _reminderMenu.DropDownItems.Add(item);
+        }
+    }
+
+    /// <summary>把便箋叫到前景並取得焦點；已關閉的先重新開啟</summary>
+    private void OpenNote(NoteForm? form, NoteData data)
+    {
+        if (form == null || form.IsDisposed)
+        {
+            if (!_closedNotes.Remove(data))
+                return; // 選單開啟後狀態已變（例如已被提醒自動開啟）
+            CreateNote(data);
+            return;
+        }
+        form.Show();
+        if (form.WindowState == FormWindowState.Minimized)
+            form.WindowState = FormWindowState.Normal;
+        form.Activate();
+    }
+
+    /// <summary>點提醒氣泡：把正在響鈴的便箋叫到前景</summary>
+    private void FocusRingingNote()
+    {
+        if (_notes.FirstOrDefault(n => n.IsRinging) is { } form)
+            OpenNote(form, form.ToData());
+    }
+
+    /// <summary>
+    /// 檢查所有便箋的提醒：開啟中的直接響鈴，已關閉的先重新開啟再響鈴。
+    /// 每次都直接比對「現在 ≥ 響鈴時間」，睡眠喚醒或調整系統時間都不會漏。
+    /// </summary>
+    private void CheckReminders()
+    {
+        if (_exiting)
+            return;
+
+        var now = DateTime.Now;
+        var rang = new List<NoteForm>();
+
+        foreach (var form in _notes.ToList())
+        {
+            if (!form.IsRinging && ReminderSchedule.IsDue(form.ToData(), now))
+                rang.Add(form);
+        }
+        foreach (var data in _closedNotes.Where(d => ReminderSchedule.IsDue(d, now)).ToList())
+        {
+            _closedNotes.Remove(data);
+            rang.Add(CreateNote(data, activate: false));
+        }
+
+        foreach (var form in rang)
+            form.StartRinging();
+        foreach (var form in _notes)
+            form.RefreshReminderLabel(); // 跨日後「明天」要改成當天時間
+
+        if (rang.Count > 0)
+        {
+            string text = rang.Count == 1
+                ? rang[0].ToData().DisplayName(16)
+                : $"{rang.Count} 張便箋的提醒時間到了";
+            _trayIcon.ShowBalloonTip(10_000, "MemoTack 提醒", text, ToolTipIcon.Info);
+            UpdateTrayState();
+            SaveAll(); // 已關閉的便箋被重新開啟，狀態要立刻寫回
+        }
+    }
+
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume)
+            CheckReminders();
     }
 
     /// <summary>開啟設定視窗；確定後套用到所有便箋並存檔</summary>
@@ -282,8 +393,25 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>
-    /// 使用者再次開啟 MemoTack（第二個實例會通知這裡）：把便箋叫到前景，
-    /// 讓使用者知道程式已在執行。沒有開啟中的便箋時新增一張。
+    /// 快捷鍵：正在操作便箋（前景是某張便箋）時隱藏；否則把便箋叫到最前面。
+    /// 單純依「是否顯示中」切換的話，便箋被其他視窗蓋住時按下去反而會隱藏，要按兩次才叫得出來。
+    /// </summary>
+    private void ToggleFromHotkey()
+    {
+        var foreground = GetForegroundWindow();
+        bool onNotes = _notes.Any(n => n.IsHandleCreated && n.Handle == foreground);
+        if (onNotes)
+            SetNotesVisible(false);
+        else
+            ShowAllNotes();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    /// <summary>
+    /// 把所有便箋叫到最前面（單擊系統匣、快捷鍵、再次開啟 MemoTack 時）：
+    /// 隱藏的顯示、最小化的還原、被蓋住的浮到上方。沒有開啟中的便箋時新增一張。
     /// </summary>
     public void ShowAllNotes()
     {
@@ -306,7 +434,7 @@ public class TrayApplicationContext : ApplicationContext
                 n.Show();
                 if (n.WindowState == FormWindowState.Minimized)
                     n.WindowState = FormWindowState.Normal; // 解除 Win+D 造成的最小化
-                n.BringToFront(); // 非置頂模式時把便箋帶到前景
+                n.RaiseToTop(); // 浮到其他程式的視窗上方（BringToFront 只在同程式內有效）
             }
             else
             {
@@ -362,9 +490,12 @@ public class TrayApplicationContext : ApplicationContext
         _hotkey.Dispose();
         _saveTimer.Stop();
         _saveTimer.Dispose();
+        _reminderTimer.Stop();
+        _reminderTimer.Dispose();
         SaveAll();
 
         SystemEvents.SessionEnding -= OnSessionEnding;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _trayIcon.Visible = false; // 先隱藏，避免殘影留在系統匣
         _trayIcon.Dispose();
 

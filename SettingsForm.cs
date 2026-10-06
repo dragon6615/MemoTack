@@ -1,10 +1,10 @@
 namespace MemoTack;
 
 /// <summary>
-/// 設定視窗：標題列字型/大小、內容字型/大小。
+/// 設定視窗：外觀（字型、字級、置頂）、全域快捷鍵、登入自動啟動。
 /// 按「確定」時把值寫回傳入的 AppSettings。
 /// </summary>
-public class SettingsForm : Form
+public class SettingsForm : StyledDialog
 {
     private readonly AppSettings _settings;
     private readonly ComboBox _titleFont;
@@ -17,24 +17,10 @@ public class SettingsForm : Form
     private readonly TextBox _restoreHotkeyBox;
     private readonly ToolTip _toolTip = new();
 
-    public SettingsForm(AppSettings settings)
+    public SettingsForm(AppSettings settings) : base("MemoTack 設定")
     {
         _settings = settings;
-
-        // ---- 視窗基本設定 ----
-        Text = "MemoTack 設定";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        TopMost = true; // 便箋可能設為置頂，設定視窗也要置頂才不會被蓋住
-        Font = new Font("Segoe UI", 9f);
-
-        // 依 DPI 縮放視窗與控制項，避免高 DPI 下文字被截斷
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96f, 96f);
-        ClientSize = new Size(400, 356);
 
         // ---- 系統已安裝字型清單 ----
         string[] families = FontFamily.Families.Select(f => f.Name).OrderBy(n => n).ToArray();
@@ -44,90 +30,43 @@ public class SettingsForm : Form
         _contentFont = MakeFontCombo(families, settings.ContentFontFamily);
         _contentSize = MakeSizeUpDown(settings.ContentFontSize);
 
-        // ---- 表格佈局 ----
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(14, 12, 14, 0),
-            ColumnCount = 2,
-        };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _alwaysOnTop = MakeCheck("便箋顯示在最上層（置頂）", settings.AlwaysOnTop);
+        _autoStart = MakeCheck("登入 Windows 時自動啟動", StartupManager.IsEnabled()); // 以登錄實際狀態為準
 
-        _alwaysOnTop = new CheckBox
-        {
-            Text = "便箋顯示在最上層（置頂）",
-            Checked = settings.AlwaysOnTop,
-            AutoSize = true,
-        };
-
-        _hotkeyBox = new HotkeyBox
-        {
-            Text = settings.Hotkey,
-            Dock = DockStyle.Fill,
-            PlaceholderText = "點此按下組合鍵",
-        };
-        _toolTip.SetToolTip(_hotkeyBox,
-            "點一下欄位，直接按下想要的組合鍵（如 Alt+F10）。\nF12 被 Windows 保留，不可使用。\nBackspace 或 Esc 清空＝停用。\n被系統占用的組合（如 Win+S）會註冊失敗。");
-
-        _restoreHotkeyBox = new HotkeyBox
-        {
-            Text = settings.RestoreHotkey,
-            Dock = DockStyle.Fill,
-            PlaceholderText = "點此按下組合鍵",
-        };
+        _hotkeyBox = MakeHotkeyBox(settings.Hotkey);
+        _toolTip.SetToolTip(_hotkeyBox, "正在用其他程式時叫出便箋；正在操作便箋時隱藏。");
+        _restoreHotkeyBox = MakeHotkeyBox(settings.RestoreHotkey);
         _toolTip.SetToolTip(_restoreHotkeyBox, "一次還原所有已關閉的便箋。");
 
-        AddRow(table, "標題列字型", _titleFont);
-        AddRow(table, "標題列大小 (pt)", _titleSize);
-        AddRow(table, "內容字型", _contentFont);
-        AddRow(table, "內容大小 (pt)", _contentSize);
-        AddRow(table, "顯示/隱藏快捷鍵", _hotkeyBox);
-        AddRow(table, "還原已關閉快捷鍵", _restoreHotkeyBox);
+        // ---- 內容：三個區塊 ----
+        var body = MakeBody();
 
-        // 勾選選項橫跨兩欄
-        AddCheckRow(table, _alwaysOnTop);
+        AddSection(body, "外觀", first: true);
+        AddRow(body, "標題列", FontRow(_titleFont, _titleSize));
+        AddRow(body, "內容（預設）", FontRow(_contentFont, _contentSize));
+        AddWide(body, MakeHint("新便箋使用此大小；個別便箋可用 Ctrl+滾輪 調整。\n修改此值會套用到所有便箋。"));
+        AddWide(body, _alwaysOnTop);
 
-        _autoStart = new CheckBox
-        {
-            Text = "登入 Windows 時自動啟動",
-            Checked = StartupManager.IsEnabled(), // 以登錄實際狀態為準
-            AutoSize = true,
-        };
-        AddCheckRow(table, _autoStart);
+        AddSection(body, "快捷鍵", first: false);
+        AddRow(body, "叫出／隱藏便箋", _hotkeyBox);
+        AddRow(body, "還原已關閉便箋", _restoreHotkeyBox);
+        AddWide(body, MakeHint("點一下欄位後直接按下組合鍵；Backspace 清除＝停用。\nF12 被 Windows 保留，被其他程式占用的組合會註冊失敗。"));
+
+        AddSection(body, "啟動", first: false);
+        AddWide(body, _autoStart);
 
         // ---- 確定 / 取消 ----
-        var btnOk = new Button { Text = "確定", Width = 84, Height = 28, DialogResult = DialogResult.OK };
-        var btnCancel = new Button { Text = "取消", Width = 84, Height = 28, DialogResult = DialogResult.Cancel };
+        var btnOk = MakeButton("確定", primary: true);
+        btnOk.DialogResult = DialogResult.OK;
         btnOk.Click += (_, _) => ApplyToSettings();
+        var btnCancel = MakeButton("取消", primary: false);
+        btnCancel.DialogResult = DialogResult.Cancel;
 
-        var btnPanel = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.RightToLeft, // 先加入的靠最右
-            Dock = DockStyle.Bottom,
-            Height = 46,
-            Padding = new Padding(10, 8, 10, 8),
-        };
-        btnPanel.Controls.Add(btnCancel);
-        btnPanel.Controls.Add(btnOk);
-
-        Controls.Add(table);
-        Controls.Add(btnPanel);
-        table.BringToFront();
+        SetLayout(MakeHeader("⚙  MemoTack 設定", "版本 " + VersionText(), NoteForm.Palette[0].Header),
+                  body, MakeFooter(null, btnOk, btnCancel));
 
         AcceptButton = btnOk;
         CancelButton = btnCancel;
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        var font = Font; // 建構子自行建立的字型，Form 不會替我們釋放
-        base.Dispose(disposing);
-        if (disposing)
-        {
-            _toolTip.Dispose();
-            font.Dispose();
-        }
     }
 
     /// <summary>把 UI 上的值寫回 AppSettings（按「確定」時呼叫）</summary>
@@ -143,14 +82,64 @@ public class SettingsForm : Form
         StartupManager.SetEnabled(_autoStart.Checked); // 直接寫入/移除登錄值
     }
 
+    /// <summary>x.y.z（不含 .NET 附加的 +commit 雜湊）</summary>
+    private static string VersionText()
+    {
+        var v = typeof(SettingsForm).Assembly.GetName().Version;
+        return v == null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+            _toolTip.Dispose();
+    }
+
+    // ---------- 版面 ----------
+
+    /// <summary>區塊標題（橫跨兩欄）；非第一個區塊上方多留空白做分隔</summary>
+    private void AddSection(TableLayoutPanel table, string title, bool first)
+    {
+        var label = new Label
+        {
+            Text = title,
+            AutoSize = true,
+            Font = OwnFont(10.5f, FontStyle.Bold),
+            ForeColor = TextStrong,
+            Margin = new Padding(0, first ? 0 : Dpi(16), 0, Dpi(4)),
+        };
+        int row = table.RowCount++;
+        table.Controls.Add(label, 0, row);
+        table.SetColumnSpan(label, 2);
+    }
+
+    /// <summary>放在右欄、與其他控制項對齊的一列（勾選框、說明文字）</summary>
+    private static void AddWide(TableLayoutPanel table, Control control)
+    {
+        table.Controls.Add(control, 1, table.RowCount++);
+    }
+
+    /// <summary>字型下拉 + 字級 + 「pt」排成一列</summary>
+    private FlowLayoutPanel FontRow(ComboBox font, NumericUpDown size)
+    {
+        var row = MakeFlow();
+        font.Margin = new Padding(0, 0, Dpi(8), 0);
+        size.Margin = new Padding(0, 0, Dpi(4), 0);
+        row.Controls.Add(font);
+        row.Controls.Add(size);
+        row.Controls.Add(new Label { Text = "pt", AutoSize = true, ForeColor = TextMuted, Anchor = AnchorStyles.Left, Margin = Padding.Empty });
+        return row;
+    }
+
     // ---------- 控制項工廠 ----------
 
-    private static ComboBox MakeFontCombo(string[] families, string current)
+    private ComboBox MakeFontCombo(string[] families, string current)
     {
         var cb = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList, // 只能從清單選，避免打錯字型名
-            Dock = DockStyle.Fill,
+            Width = TextRenderer.MeasureText("Microsoft JhengHei UI Light", Font).Width + Dpi(28),
         };
         cb.Items.AddRange(families);
         cb.SelectedItem = families.Contains(current) ? current : "Segoe UI";
@@ -159,27 +148,43 @@ public class SettingsForm : Form
         return cb;
     }
 
-    private static NumericUpDown MakeSizeUpDown(float current)
+    private NumericUpDown MakeSizeUpDown(float current) => new()
     {
-        return new NumericUpDown
-        {
-            Minimum = 7,
-            Maximum = 48,
-            DecimalPlaces = 0,
-            Increment = 1,
-            Value = Math.Clamp((decimal)current, 7, 48),
-            Width = 80,
-        };
-    }
+        Minimum = 7,
+        Maximum = 48,
+        DecimalPlaces = 0,
+        Increment = 1,
+        Value = Math.Clamp((decimal)current, 7, 48),
+        Width = TextRenderer.MeasureText("48", Font).Width + Dpi(36),
+    };
 
-    private static void AddCheckRow(TableLayoutPanel table, CheckBox chk)
+    /// <summary>灰色小字說明</summary>
+    private Label MakeHint(string text) => new()
     {
-        int row = table.RowCount++;
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        table.Controls.Add(chk, 0, row);
-        table.SetColumnSpan(chk, 2);
-        chk.Anchor = AnchorStyles.Left;
-    }
+        Text = text,
+        AutoSize = true,
+        ForeColor = TextMuted,
+        Font = OwnFont(9f),
+        Margin = new Padding(0, Dpi(2), 0, 0),
+    };
+
+    private CheckBox MakeCheck(string text, bool isChecked) => new()
+    {
+        Text = text,
+        Checked = isChecked,
+        AutoSize = true,
+        Cursor = Cursors.Hand,
+        Margin = new Padding(0, Dpi(6), 0, Dpi(2)),
+    };
+
+    private HotkeyBox MakeHotkeyBox(string hotkey) => new()
+    {
+        Text = hotkey,
+        PlaceholderText = "點此按下組合鍵",
+        BorderStyle = BorderStyle.FixedSingle,
+        Width = TextRenderer.MeasureText("Ctrl+Alt+Shift+F11", Font).Width + Dpi(24),
+        Margin = new Padding(0, Dpi(4), 0, Dpi(4)),
+    };
 
     /// <summary>
     /// 快捷鍵擷取框：不用打字，直接按下組合鍵就填入。
@@ -256,20 +261,5 @@ public class SettingsForm : Form
             if (k >= Keys.F1 && k <= Keys.F11) return k.ToString();
             return null;
         }
-    }
-
-    private static void AddRow(TableLayoutPanel table, string label, Control control)
-    {
-        int row = table.RowCount++;
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        table.Controls.Add(new Label
-        {
-            Text = label,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Dock = DockStyle.Fill,
-        }, 0, row);
-        if (control is NumericUpDown)
-            control.Anchor = AnchorStyles.Left; // 數字框固定寬度靠左；ComboBox 已 Dock.Fill
-        table.Controls.Add(control, 1, row);
     }
 }

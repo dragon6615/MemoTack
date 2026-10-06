@@ -96,7 +96,10 @@ public static class NoteStorage
         foreach (var n in state.Notes)
         {
             n.Content ??= string.Empty;
+            n.Title ??= string.Empty;
             n.FontSize = ValidFontSize(n.FontSize, s.ContentFontSize);
+            if (!Enum.IsDefined(n.ReminderRepeat)) n.ReminderRepeat = ReminderRepeat.None;
+            if (n.ReminderAt == null) n.ReminderSnoozeUntil = null;
         }
         return state;
     }
