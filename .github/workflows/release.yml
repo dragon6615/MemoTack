@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -35,7 +35,7 @@ jobs:
         run: .\build-installer.ps1 -Version ${{ steps.ver.outputs.version }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: MemoTack v${{ steps.ver.outputs.version }}
           files: installer/MemoTack-Setup-${{ steps.ver.outputs.version }}.exe
