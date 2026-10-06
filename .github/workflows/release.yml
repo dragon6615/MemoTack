@@ -31,13 +31,17 @@ jobs:
           $v = $env:GITHUB_REF_NAME.TrimStart('v')
           "version=$v" >> $env:GITHUB_OUTPUT
 
-      - name: Release notes from CHANGELOG.md # 放在建置前：沒寫更新說明就不浪費時間建置
+      - name: Check CHANGELOG.md # 放在建置前：沒寫更新說明就不浪費時間建置
         shell: pwsh
-        run: .\.github\release-notes.ps1 -Version ${{ steps.ver.outputs.version }} -OutFile release-notes.md
+        run: .\.github\release-notes.ps1 -Version ${{ steps.ver.outputs.version }} | Out-Null
 
       - name: Build installer
         shell: pwsh
         run: .\build-installer.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      - name: Release notes # CHANGELOG 段落 + 安裝說明 + 安裝檔 SHA-256
+        shell: pwsh
+        run: .\.github\release-notes.ps1 -Version ${{ steps.ver.outputs.version }} -Installer installer/MemoTack-Setup-${{ steps.ver.outputs.version }}.exe -OutFile release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

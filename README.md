@@ -2,6 +2,25 @@
 
 仿 Windows Sticky Notes 的 C# WinForms（.NET 8）桌面便箋小工具。
 
+## 安裝
+
+到 [Releases](https://github.com/dragon6615/MemoTack/releases/latest) 下載 `MemoTack-Setup-<版本>.exe` 執行即可（不需另外安裝 .NET）。
+升級時直接執行新版安裝檔，便箋資料會完整保留。各版本的改動見 [更新紀錄](CHANGELOG.md)。
+
+### 出現「Windows 已保護您的電腦」？
+
+點「**其他資訊**」→「**仍要執行**」即可繼續安裝。
+
+MemoTack 是個人開發的開源專案，安裝檔沒有付費的程式碼簽章；每個新版本剛發佈時還沒累積下載信譽，
+Microsoft Defender SmartScreen 就會顯示這個警告。如果想先確認檔案安全：
+
+- 安裝檔由 [GitHub Actions](https://github.com/dragon6615/MemoTack/actions) 從本 repo 的公開原始碼自動建置
+- 每個 Release 說明最後都附有安裝檔的 SHA-256，可在 PowerShell 比對：
+  ```powershell
+  (Get-FileHash .\MemoTack-Setup-1.1.0.exe).Hash
+  ```
+- 也可以依下方「建置與執行」自行編譯
+
 ## 功能
 
 - 無邊框便箋視窗，像便利貼黏在桌面上；不出現在工具列與 Alt+Tab
