@@ -48,15 +48,17 @@ public static class StartupManager
     }
 
     /// <summary>
-    /// 已啟用但執行檔路徑改變時（例如專案資料夾搬家、改用發佈版），
+    /// 已啟用但登錄記錄的執行檔已不存在時（例如資料夾搬家、改裝到別的位置），
     /// 自動把登錄值更新成目前路徑。每次啟動呼叫一次即可。
+    /// 原路徑仍存在就不動：避免執行開發版（bin\Debug）時搶走正式版的自動啟動。
     /// </summary>
     public static void RefreshPathIfEnabled()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-            if (key?.GetValue(AppName) is string current && current != ExePath)
+            if (key?.GetValue(AppName) is string current && current != ExePath &&
+                !File.Exists(current.Trim().Trim('"')))
                 key.SetValue(AppName, ExePath);
         }
         catch
