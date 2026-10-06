@@ -424,7 +424,10 @@ public class NoteForm : Form
             return;
 
         _data.ReminderAt = dlg.Cleared ? null : dlg.ReminderAt;
-        _data.ReminderRepeat = dlg.Cleared ? ReminderRepeat.None : dlg.Repeat;
+        var rule = dlg.Cleared ? RepeatRule.None : dlg.Rule;
+        _data.ReminderRepeat = rule.Kind;
+        _data.ReminderWeekDays = rule.WeekDays;
+        _data.ReminderMonthDay = rule.MonthDay;
         _data.ReminderSnoozeUntil = null; // 重新設定 = 放棄之前的延後
         StopRinging();
         RefreshReminderLabel();
@@ -448,7 +451,7 @@ public class NoteForm : Form
         _reminderCompact = $"⏰ {due.Value:HH:mm}";
         FitReminderLabel();
 
-        string tip = $"提醒：{due.Value:yyyy/MM/dd HH:mm}（{ReminderSchedule.RepeatName(_data.ReminderRepeat)}）";
+        string tip = $"提醒：{due.Value:yyyy/MM/dd HH:mm}（{ReminderSchedule.Describe(RepeatRule.From(_data))}）";
         if (_data.ReminderSnoozeUntil != null) tip += "，已延後";
         _toolTip.SetToolTip(_reminderLabel, tip);
     }
@@ -493,7 +496,7 @@ public class NoteForm : Form
     public void CompleteReminder()
     {
         if (_data.ReminderAt is { } at && _data.ReminderRepeat != ReminderRepeat.None)
-            _data.ReminderAt = ReminderSchedule.Next(at, _data.ReminderRepeat, DateTime.Now);
+            _data.ReminderAt = ReminderSchedule.Next(at, RepeatRule.From(_data), DateTime.Now);
         else
             _data.ReminderAt = null;
         _data.ReminderSnoozeUntil = null;

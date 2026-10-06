@@ -34,10 +34,12 @@ public abstract class StyledDialog : Form
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
     }
 
+    private TableLayoutPanel? _root;
+
     /// <summary>由上往下放入色帶、內容、按鈕列</summary>
     protected void SetLayout(Control header, Control body, Control footer)
     {
-        var root = new TableLayoutPanel
+        _root = new TableLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -45,10 +47,25 @@ public abstract class StyledDialog : Form
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        root.Controls.Add(header, 0, 0);
-        root.Controls.Add(body, 0, 1);
-        root.Controls.Add(footer, 0, 2);
-        Controls.Add(root);
+        // 比例欄：版面被撐寬（LockCurrentWidth）時，色帶與按鈕列會跟著延伸到視窗邊緣
+        _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _root.Controls.Add(header, 0, 0);
+        _root.Controls.Add(body, 0, 1);
+        _root.Controls.Add(footer, 0, 2);
+        Controls.Add(_root);
+    }
+
+    /// <summary>
+    /// 以目前的寬度當最小寬度：內容會切換顯示的對話框（例如設定提醒依重複方式顯示不同欄位），
+    /// 先切到最寬的版面再呼叫，之後切換時視窗才不會忽寬忽窄。
+    /// 要設在內層版面而不是 Form：只撐寬 Form 的話，色帶與按鈕列不會跟著變寬，右邊會露出空白。
+    /// </summary>
+    protected void LockCurrentWidth()
+    {
+        if (_root == null)
+            return;
+        PerformLayout();
+        _root.MinimumSize = new Size(_root.Width, 0);
     }
 
     /// <summary>頂端色帶：大標題 + 副標題</summary>
@@ -158,19 +175,21 @@ public abstract class StyledDialog : Form
         Padding = Padding.Empty,
     };
 
-    /// <summary>在兩欄表格加一列：左欄灰色標籤、右欄控制項</summary>
-    protected void AddRow(TableLayoutPanel table, string label, Control control)
+    /// <summary>在兩欄表格加一列：左欄灰色標籤、右欄控制項。回傳標籤，方便整列隱藏（AutoSize 列會跟著收起）</summary>
+    protected Label AddRow(TableLayoutPanel table, string label, Control control)
     {
         int row = table.RowCount++;
-        table.Controls.Add(new Label
+        var caption = new Label
         {
             Text = label,
             AutoSize = true,
             ForeColor = TextMuted,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 0, Dpi(14), 0),
-        }, 0, row);
+        };
+        table.Controls.Add(caption, 0, row);
         table.Controls.Add(control, 1, row);
+        return caption;
     }
 
     /// <summary>以 96 DPI 為基準的像素值換算成目前 DPI</summary>

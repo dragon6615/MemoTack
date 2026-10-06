@@ -35,6 +35,12 @@ public class NoteData
     /// <summary>提醒重複方式</summary>
     public ReminderRepeat ReminderRepeat { get; set; } = ReminderRepeat.None;
 
+    /// <summary>每週重複的星期（位元遮罩，bit n = DayOfWeek n，週日為 bit 0）；只用於每週</summary>
+    public int ReminderWeekDays { get; set; }
+
+    /// <summary>每月重複的日子（1–31，該月沒有這天時在月底）；只用於每月</summary>
+    public int ReminderMonthDay { get; set; }
+
     /// <summary>按「延後」後的響鈴時間；與 ReminderAt 分開存，延後才不會改掉重複提醒的基準時間</summary>
     public DateTime? ReminderSnoozeUntil { get; set; }
 

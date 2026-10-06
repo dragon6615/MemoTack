@@ -99,9 +99,33 @@ public static class NoteStorage
             n.Title ??= string.Empty;
             n.FontSize = ValidFontSize(n.FontSize, s.ContentFontSize);
             if (!Enum.IsDefined(n.ReminderRepeat)) n.ReminderRepeat = ReminderRepeat.None;
+            MigrateRepeat(n);
             if (n.ReminderAt == null) n.ReminderSnoozeUntil = null;
         }
         return state;
+    }
+
+    /// <summary>
+    /// 重複規則補齊與舊版轉換：
+    /// 舊版「平日」→ 每週一至週五；舊版「每週」（沒有星期欄位）→ 每週原定那天的星期；
+    /// 每月沒有日子 → 用原定日期的日子。
+    /// </summary>
+    private static void MigrateRepeat(NoteData n)
+    {
+        n.ReminderWeekDays &= RepeatRule.AllDaysMask;
+        switch (n.ReminderRepeat)
+        {
+            case ReminderRepeat.Weekdays:
+                n.ReminderRepeat = ReminderRepeat.Weekly;
+                n.ReminderWeekDays = RepeatRule.WeekdayMask;
+                break;
+            case ReminderRepeat.Weekly when n.ReminderWeekDays == 0:
+                n.ReminderWeekDays = n.ReminderAt is { } at ? RepeatRule.Bit(at.DayOfWeek) : RepeatRule.WeekdayMask;
+                break;
+            case ReminderRepeat.Monthly when n.ReminderMonthDay is < 1 or > 31:
+                n.ReminderMonthDay = n.ReminderAt?.Day ?? 1;
+                break;
+        }
     }
 
     /// <summary>字級限制在設定視窗允許的範圍（7–48pt），不合理的值改用預設</summary>
