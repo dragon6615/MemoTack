@@ -12,9 +12,9 @@
     <RootNamespace>MemoTack</RootNamespace>
 
     <!-- 版本與產品資訊（發佈用） -->
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <FileVersion>1.0.1</FileVersion>
     <Product>MemoTack</Product>
     <Description>仿 Windows Sticky Notes 的桌面便箋小工具</Description>
     <ApplicationIcon>app.ico</ApplicationIcon>
