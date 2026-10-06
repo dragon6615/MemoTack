@@ -37,6 +37,8 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 
 其餘檔案各司其職:`NoteForm`(單張便箋:無邊框視窗、拖曳/縮放/顏色/名稱/標題列按鈕)、`SettingsForm`(設定視窗)、`StyledDialog`(對話框共用外觀基底類別,`SettingsForm`/`ReminderForm` 繼承)、`HotkeyManager`(Win32 `RegisterHotKey`)、`StartupManager`(HKCU Run 自動啟動)、`AppSettings`/`NoteData`(資料模型 POCO)、`ReminderSchedule`(提醒時間計算,純邏輯)、`ReminderForm`(設定提醒對話框)。
 
+內容編輯器:`MarkdownTextBox`(繼承 RichTextBox)即時套用 markdown 樣式,`MarkdownSyntax` 負責逐行解析(純邏輯,可單獨測試)。存檔的 `Content` 是標準 markdown 純文字;編輯器畫面上待辦與清單換成 ☐/☑/•(`MarkdownSyntax.ToEditor`/`ToStorage` 互轉),所以載入/存檔一律走 `MarkdownTextBox.Markdown`,不要直接讀寫 `Text`。語法符號用 RichEdit 隱藏文字(CFE_HIDDEN)藏起來,只有游標所在段落顯示。
+
 提醒:`TrayApplicationContext` 每 15 秒(及啟動、睡眠喚醒時)檢查所有便箋——含 `_closedNotes`,到期的會被重新開啟——呼叫 `NoteForm.StartRinging()`。響鈴狀態只存在記憶體;`ReminderAt` 要等使用者按「完成」才清除/推進,所以未回應的提醒重開程式會以「已逾時」補發。
 
 需要留意的行為約定:
@@ -46,6 +48,7 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 - 有舊版設定遷移邏輯(如舊預設快捷鍵改為 `Alt+F10`),改預設值時要考慮既有使用者的 JSON。
 - 便箋不出現在工具列與 Alt+Tab;Win+D 收起便箋是系統行為、無法攔截,屬已知限制。所以「叫出便箋」(單擊系統匣、`Alt+F10`、再次開啟程式)要用 `NoteForm.RaiseToTop()`——`BringToFront()` 只在同程式內有效。
 - 版面不寫死尺寸:便箋最小寬度由 `UpdateMinimumSize()` 依按鈕實際寬度計算;對話框繼承 `StyledDialog` 用 AutoSize 版面、`AutoScaleMode.None`、間距經 `Dpi()` 換算。寫死像素在 150% 縮放下會切字或讓按鈕互相覆蓋。
+- `MarkdownTextBox` 的約定:以 `\n` 分隔的「段落」為單位處理——RichTextBox 的 `GetLineFromCharIndex` 等是自動換行後的顯示行,不能拿來對應 markdown 行。輸入法組字中不得改選取或格式(會中斷注音/倉頡組字)。套用格式要包在 TOM `Undo(tomSuspend/tomResume)` 裡,否則 Ctrl+Z 會先復原格式。程式直接設定 `Text` 時整篇重新套用,打字時只處理游標附近段落。不可在 `TextChanged` 裡同步再改文字(RichEdit 還在處理那次變更,只會換掉一部分),要 `BeginInvoke` 排到之後。拖曳或 Shift 選取中不重新套用格式(會改動選取範圍、打斷選取)。
 - 標題列的按鈕與標籤「按住移動超過系統拖曳門檻才開始拖曳視窗」,不是按下就拖——否則按鈕點擊與名稱雙擊都收不到。
 
 ## 專案慣例

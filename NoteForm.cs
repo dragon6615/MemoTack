@@ -24,7 +24,7 @@ public class NoteForm : Form
     private readonly AppSettings _settings;
     private readonly Panel _titleBar;
     private readonly Panel _contentPanel;
-    private readonly TextBox _textBox;
+    private readonly MarkdownTextBox _textBox;
     private readonly Button _btnColor;
     private readonly Button _btnDelete;
     private readonly Button _btnNew;
@@ -152,17 +152,12 @@ public class NoteForm : Form
         _flashTimer.Tick += FlashTimer_Tick;
 
         // ---- 內容文字框 ----
-        _textBox = new TextBox
+        // 內容編輯器：即時套用 markdown 樣式（多行、自動換行、無捲軸、無邊框由 MarkdownTextBox 設定）
+        _textBox = new MarkdownTextBox
         {
-            Multiline = true,
-            WordWrap = true,                    // 自動換行
-            AcceptsReturn = true,
-            AcceptsTab = true,
-            ScrollBars = ScrollBars.None,       // 隱藏捲軸較美觀（滾輪、方向鍵仍可捲動）
-            BorderStyle = BorderStyle.None,
             Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(50, 50, 50),
-            Text = data.Content,
+            Markdown = data.Content, // 待辦在畫面上顯示為 ☐／☑，存檔仍是標準 - [ ]
         };
         _textBox.MouseWheel += TextBox_MouseWheel;              // Ctrl+滾輪 調整字型大小
         _textBox.TextChanged += (_, _) => Changed?.Invoke();    // 內容變更 → 通知存檔
@@ -266,7 +261,7 @@ public class NoteForm : Form
     /// <summary>把目前 UI 狀態寫回資料物件並回傳（存檔用）</summary>
     public NoteData ToData()
     {
-        _data.Content = _textBox.Text;
+        _data.Content = _textBox.Markdown;
         _data.X = Left;
         _data.Y = Top;
         _data.Width = Width;

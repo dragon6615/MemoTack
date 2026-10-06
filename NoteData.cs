@@ -39,14 +39,15 @@ public class NoteData
     public DateTime? ReminderSnoozeUntil { get; set; }
 
     /// <summary>
-    /// 選單、通知等處用來辨識便箋的文字：有名稱用名稱，否則用內容第一個非空行；超過長度加「…」。
+    /// 選單、通知等處用來辨識便箋的文字：有名稱用名稱，否則用內容第一個有字的行
+    /// （去掉 markdown 符號，「- [ ] **寫週報**」→「寫週報」）；超過長度加「…」。
     /// （方法不會被序列化進 JSON）
     /// </summary>
     public string DisplayName(int maxLength)
     {
         string text = !string.IsNullOrWhiteSpace(Title)
             ? Title.Trim()
-            : Content.Split('\n', '\r').FirstOrDefault(s => s.Trim().Length > 0)?.Trim() ?? "";
+            : Content.Split('\n', '\r').Select(MarkdownSyntax.PlainText).FirstOrDefault(s => s.Length > 0) ?? "";
         if (text.Length == 0) return "（空白便箋）";
         return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
