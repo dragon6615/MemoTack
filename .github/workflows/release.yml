@@ -1,5 +1,6 @@
 # 推送 v*.*.* 格式的 tag 時，自動建置安裝程式並發佈 GitHub Release
-# 用法：git tag v1.1.0 && git push origin v1.1.0
+# 用法：先在 CHANGELOG.md 寫好該版本的段落，再 git tag v1.1.0 && git push origin v1.1.0
+# Release 說明取自 CHANGELOG.md；找不到該版本的段落會在建置前中止
 name: Release
 
 on:
@@ -30,6 +31,10 @@ jobs:
           $v = $env:GITHUB_REF_NAME.TrimStart('v')
           "version=$v" >> $env:GITHUB_OUTPUT
 
+      - name: Release notes from CHANGELOG.md # 放在建置前：沒寫更新說明就不浪費時間建置
+        shell: pwsh
+        run: .\.github\release-notes.ps1 -Version ${{ steps.ver.outputs.version }} -OutFile release-notes.md
+
       - name: Build installer
         shell: pwsh
         run: .\build-installer.ps1 -Version ${{ steps.ver.outputs.version }}
@@ -39,4 +44,4 @@ jobs:
         with:
           name: MemoTack v${{ steps.ver.outputs.version }}
           files: installer/MemoTack-Setup-${{ steps.ver.outputs.version }}.exe
-          generate_release_notes: true # 自動整理自上一版以來的 commit 清單
+          body_path: release-notes.md # 給使用者看的更新說明（取自 CHANGELOG.md）

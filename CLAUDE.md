@@ -27,7 +27,7 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 .\build-installer.ps1 -SkipPublish     # 只重編安裝程式
 ```
 
-正式發佈走 GitHub Actions:推送 `v*` tag 即自動建置並發佈 Release(`.github/workflows/release.yml`)。版本號集中在 `MemoTack.csproj` 的 `<Version>`,建置腳本會以 `-p:Version` 覆寫。
+正式發佈走 GitHub Actions:推送 `v*` tag 即自動建置並發佈 Release(`.github/workflows/release.yml`)。發版前必須先在 `CHANGELOG.md` 寫好該版本段落(標題 `## [x.y.z] - YYYY-MM-DD`,內容寫給使用者看、不是 commit 清單)——Release 說明由 `.github/release-notes.ps1` 從中取出,找不到段落會在建置前中止。可先用 `pwsh .github/release-notes.ps1 -Version x.y.z` 預覽。版本號集中在 `MemoTack.csproj` 的 `<Version>`,建置腳本會以 `-p:Version` 覆寫。
 
 ## 架構
 

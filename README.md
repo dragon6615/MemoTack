@@ -85,9 +85,11 @@ dotnet run            # 執行（啟動後看系統匣圖示）
 
 ### 自動發佈（GitHub Actions）
 
-推送版本 tag 即自動建置並發佈 Release（含安裝檔與自動整理的更新紀錄）：
+推送版本 tag 即自動建置並發佈 Release（含安裝檔）。Release 說明取自 [`CHANGELOG.md`](CHANGELOG.md)
+對應版本的段落，所以要**先寫好更新紀錄再推 tag**；找不到該版本段落時發佈會在建置前中止。
 
 ```powershell
+pwsh .github/release-notes.ps1 -Version 1.1.0   # 預覽 Release 說明
 git tag v1.1.0
 git push origin v1.1.0
 ```
