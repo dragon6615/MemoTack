@@ -99,6 +99,8 @@ public class TrayApplicationContext : ApplicationContext
         _updateTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
         _updateTimer.Tick += async (_, _) =>
         {
+            if (_updateTimer.Interval == 30_000)
+                UpdateChecker.CleanupDownloads(); // 第一次觸發時，自動更新的安裝程式早已結束，可以刪掉安裝檔
             _updateTimer.Interval = 24 * 60 * 60 * 1000;
             await CheckForUpdatesAsync(manual: false);
         };

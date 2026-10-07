@@ -74,3 +74,7 @@ Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser skipifnotsile
 ; 重新安裝後便箋會自動回來；若要一併刪除，取消下面註解
 ;[UninstallDelete]
 ;Type: filesandordirs; Name: "{userappdata}\MemoTack"
+
+[UninstallDelete]
+; 自動更新下載的安裝檔（平常在更新後重新開啟時就會清掉，這裡處理沒清到的殘留）
+Type: filesandordirs; Name: "{%TEMP}\MemoTack-Update"

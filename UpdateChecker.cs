@@ -89,9 +89,9 @@ public static class UpdateChecker
         if (info.Sha256 == null)
             throw new InvalidOperationException("Release 說明裡找不到安裝檔的檢查碼");
 
-        string dir = Path.Combine(Path.GetTempPath(), "MemoTack-Update");
-        Directory.CreateDirectory(dir);
-        string path = Path.Combine(dir, info.InstallerName);
+        CleanupDownloads(); // 同一時間只留這次要裝的這一個
+        Directory.CreateDirectory(DownloadDir);
+        string path = Path.Combine(DownloadDir, info.InstallerName);
 
         using (var response = await Http.GetAsync(info.InstallerUrl, HttpCompletionOption.ResponseHeadersRead, cancel))
         {
@@ -120,6 +120,26 @@ public static class UpdateChecker
             throw new InvalidOperationException("下載的安裝檔檢查碼不符，已刪除，請稍後再試");
         }
         return path;
+    }
+
+    private static string DownloadDir => Path.Combine(Path.GetTempPath(), "MemoTack-Update");
+
+    /// <summary>
+    /// 刪掉下載過的安裝檔（每個約 60 MB，不清會一版一版累積在暫存資料夾）。
+    /// 安裝當下檔案還被安裝程式占用刪不掉，所以在更新後重新開啟、安裝程式結束後才清。
+    /// 刪不掉（仍被占用、權限）就留到下次，不影響程式。
+    /// </summary>
+    public static void CleanupDownloads()
+    {
+        try
+        {
+            if (Directory.Exists(DownloadDir))
+                Directory.Delete(DownloadDir, recursive: true);
+        }
+        catch
+        {
+            // 下次再清
+        }
     }
 
     /// <summary>
