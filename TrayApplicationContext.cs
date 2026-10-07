@@ -479,21 +479,83 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>
-    /// 快捷鍵：正在操作便箋（前景是某張便箋）時隱藏；否則把便箋叫到最前面。
-    /// 單純依「是否顯示中」切換的話，便箋被其他視窗蓋住時按下去反而會隱藏，要按兩次才叫得出來。
+    /// 快捷鍵：便箋全部看得到（顯示中、沒被其他程式的視窗蓋住）時隱藏；否則把便箋叫到最前面。
+    /// - 單純依「是否顯示中」切換的話，便箋被蓋住時按下去反而會隱藏，要按兩次才叫得出來。
+    /// - 也不能依「前景是不是便箋」判斷：叫出便箋刻意不搶焦點，焦點留在原程式，
+    ///   在其他程式裡就永遠隱藏不了。
     /// </summary>
     private void ToggleFromHotkey()
     {
         var foreground = GetForegroundWindow();
         bool onNotes = _notes.Any(n => n.IsHandleCreated && n.Handle == foreground);
-        if (onNotes)
+        if (onNotes || AllNotesUncovered())
             SetNotesVisible(false);
         else
             ShowAllNotes();
     }
 
+    /// <summary>
+    /// 每張便箋都顯示中，而且沒有其他程式的視窗蓋在上面。
+    /// 沿 Z 順序往上看：忽略隱藏、最小化、被 DWM 遮蔽（其他虛擬桌面、暫停的 UWP）、
+    /// 工具視窗（工作列、提示框、陰影）與滑鼠穿透的覆蓋層，避免被看不見的視窗誤判成「蓋住」。
+    /// </summary>
+    private bool AllNotesUncovered()
+    {
+        if (_notes.Count == 0)
+            return false;
+
+        var ours = _notes.Where(n => n.IsHandleCreated).Select(n => n.Handle).ToHashSet();
+        foreach (var n in _notes)
+        {
+            if (!n.Visible || n.WindowState == FormWindowState.Minimized || !n.IsHandleCreated)
+                return false;
+
+            var rect = n.Bounds;
+            for (var h = GetWindow(n.Handle, GW_HWNDPREV); h != IntPtr.Zero; h = GetWindow(h, GW_HWNDPREV))
+            {
+                if (ours.Contains(h) || !IsWindowVisible(h) || IsIconic(h) || IsCloaked(h))
+                    continue;
+                long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+                if ((ex & (WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT)) != 0)
+                    continue;
+                if (GetWindowRect(h, out var r) &&
+                    Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom).IntersectsWith(rect))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsCloaked(IntPtr hwnd) =>
+        DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0;
+
+    private const uint GW_HWNDPREV = 3;
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_TOOLWINDOW = 0x80, WS_EX_TRANSPARENT = 0x20;
+    private const int DWMWA_CLOAKED = 14;
+
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
 
     /// <summary>
     /// 把所有便箋叫到最前面（單擊系統匣、快捷鍵、再次開啟 MemoTack 時）：
