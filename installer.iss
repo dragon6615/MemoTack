@@ -60,6 +60,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; 不在安裝時建立（自動啟動由程式的設定視窗控制），但解除安裝時清掉殘留的登錄值
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#MyAppName}"; \
     Flags: uninsdeletevalue dontcreatekey
+; 工作管理員「啟動應用程式」切換過時 Windows 另存的啟用/停用旗標，一併清掉
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"; ValueName: "{#MyAppName}"; \
+    Flags: uninsdeletevalue dontcreatekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \

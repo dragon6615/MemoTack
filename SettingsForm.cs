@@ -66,8 +66,20 @@ public class SettingsForm : StyledDialog
         var btnCancel = MakeButton("取消", primary: false);
         btnCancel.DialogResult = DialogResult.Cancel;
 
+        var reset = new LinkLabel
+        {
+            Text = "還原預設值",
+            AutoSize = true,
+            LinkColor = Primary,
+            ActiveLinkColor = Primary,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+            Margin = new Padding(Dpi(4), 0, Dpi(16), 0),
+        };
+        _toolTip.SetToolTip(reset, "把所有欄位填回全新安裝時的狀態（含關閉自動啟動），\n按「確定」才會生效。");
+        reset.LinkClicked += (_, _) => FillDefaults();
+
         SetLayout(MakeHeader("⚙  MemoTack 設定", "版本 " + VersionText(), NoteForm.Palette[0].Header),
-                  body, MakeFooter(null, btnOk, btnCancel));
+                  body, MakeFooter(reset, btnOk, btnCancel));
 
         AcceptButton = btnOk;
         CancelButton = btnCancel;
@@ -85,6 +97,32 @@ public class SettingsForm : StyledDialog
         _settings.RestoreHotkey = _restoreHotkeyBox.Text.Trim();
         StartupManager.SetEnabled(_autoStart.Checked); // 直接寫入/移除登錄值
         _settings.CheckForUpdates = _checkUpdates.Checked;
+    }
+
+    /// <summary>
+    /// 把欄位填回 AppSettings 的預設值；只改畫面，按「確定」才寫回（按「取消」等於沒按）。
+    /// 結果與全新安裝完全一致，自動啟動也包含在內。
+    /// </summary>
+    private void FillDefaults()
+    {
+        var d = new AppSettings();
+        SelectFont(_titleFont, d.TitleFontFamily);
+        _titleSize.Value = Math.Clamp((decimal)d.TitleFontSize, _titleSize.Minimum, _titleSize.Maximum);
+        SelectFont(_contentFont, d.ContentFontFamily);
+        _contentSize.Value = Math.Clamp((decimal)d.ContentFontSize, _contentSize.Minimum, _contentSize.Maximum);
+        _alwaysOnTop.Checked = d.AlwaysOnTop;
+        _hotkeyBox.Text = d.Hotkey;
+        _restoreHotkeyBox.Text = d.RestoreHotkey;
+        _checkUpdates.Checked = d.CheckForUpdates;
+        _autoStart.Checked = false; // 全新安裝不建立自動啟動（installer.iss 刻意不寫 Run 登錄值）
+    }
+
+    /// <summary>選取指定字型；系統沒有就退回 Segoe UI，再不行選第一個</summary>
+    private static void SelectFont(ComboBox cb, string name)
+    {
+        cb.SelectedItem = cb.Items.Contains(name) ? name : "Segoe UI";
+        if (cb.SelectedIndex < 0 && cb.Items.Count > 0)
+            cb.SelectedIndex = 0;
     }
 
     /// <summary>x.y.z（不含 .NET 附加的 +commit 雜湊）</summary>
@@ -147,9 +185,7 @@ public class SettingsForm : StyledDialog
             Width = TextRenderer.MeasureText("Microsoft JhengHei UI Light", Font).Width + Dpi(28),
         };
         cb.Items.AddRange(families);
-        cb.SelectedItem = families.Contains(current) ? current : "Segoe UI";
-        if (cb.SelectedIndex < 0 && cb.Items.Count > 0)
-            cb.SelectedIndex = 0;
+        SelectFont(cb, current);
         return cb;
     }
 
@@ -231,10 +267,10 @@ public class SettingsForm : StyledDialog
                 return;
 
             var parts = new List<string>();
+            if (_winDown) parts.Add("Win"); // Windows 慣例寫法 Win 在前（Win+Alt+Q、Win+Shift+S）
             if (e.Control) parts.Add("Ctrl");
             if (e.Alt) parts.Add("Alt");
             if (e.Shift) parts.Add("Shift");
-            if (_winDown) parts.Add("Win");
             if (parts.Count == 0)
                 return; // 全域快捷鍵至少要一個修飾鍵
 

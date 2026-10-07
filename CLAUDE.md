@@ -47,8 +47,8 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 
 - 按 `✕` 關閉便箋是「保留內容」(資料移到 `_closedNotes`,可從系統匣還原);按 `🗑` 才是永久刪除。改動便箋生命週期時不要混淆這兩者。
 - 提醒的「延後」寫在 `ReminderSnoozeUntil`,不改 `ReminderAt`——後者是重複提醒的基準時間,`Next()` 一律從它往後推。響鈴中按 `✕` 視同「完成」。`ReminderRepeat` 以整數存 JSON(未知值載入時視為不重複),新增列舉值不會讓舊版讀檔失敗。重複規則 = `RepeatRule`(種類 + `ReminderWeekDays` 星期遮罩 + `ReminderMonthDay`);「平日」在 UI 上是每週的預設組合,存檔一律存成 Weekly + 週一至週五遮罩,舊版的 `Weekdays`(2)由 `NoteStorage.MigrateRepeat` 載入時轉換。每月的日子以 `ReminderMonthDay` 為準、不從上一次推算,31 日遇小月落在月底後下個月仍回到 31 日。
-- 有舊版設定遷移邏輯(如舊預設快捷鍵改為 `Alt+F10`),改預設值時要考慮既有使用者的 JSON。
-- 便箋不出現在工具列與 Alt+Tab;Win+D 收起便箋是系統行為、無法攔截,屬已知限制。所以「叫出便箋」(單擊系統匣、`Alt+F10`、再次開啟程式)要用 `NoteForm.RaiseToTop()`——`BringToFront()` 只在同程式內有效。
+- 有舊版設定遷移邏輯(如更早的預設快捷鍵 `Ctrl+Alt+S`/`Alt+F12` 改為目前預設),改預設值時要考慮既有使用者的 JSON。目前預設 `Win+Alt+Q`(叫出/隱藏)、`Win+Alt+Z`(還原已關閉);前一代預設 `Alt+F10`/`Alt+F11` 刻意不遷移,因為分不出是沿用預設還是使用者自選。
+- 便箋不出現在工具列與 Alt+Tab;Win+D 收起便箋是系統行為、無法攔截,屬已知限制。所以「叫出便箋」(單擊系統匣、全域快捷鍵、再次開啟程式)要用 `NoteForm.RaiseToTop()`——`BringToFront()` 只在同程式內有效。
 - 版面不寫死尺寸:便箋最小寬度由 `UpdateMinimumSize()` 依按鈕實際寬度計算;對話框繼承 `StyledDialog` 用 AutoSize 版面、`AutoScaleMode.None`、間距經 `Dpi()` 換算。寫死像素在 150% 縮放下會切字或讓按鈕互相覆蓋。
 - `MarkdownTextBox` 的約定:以 `\n` 分隔的「段落」為單位處理——RichTextBox 的 `GetLineFromCharIndex` 等是自動換行後的顯示行,不能拿來對應 markdown 行。輸入法組字中不得改選取或格式(會中斷注音/倉頡組字)。套用格式要包在 TOM `Undo(tomSuspend/tomResume)` 裡,否則 Ctrl+Z 會先復原格式。程式直接設定 `Text` 時整篇重新套用,打字時只處理游標附近段落。不可在 `TextChanged` 裡同步再改文字(RichEdit 還在處理那次變更,只會換掉一部分),要 `BeginInvoke` 排到之後。拖曳或 Shift 選取中不重新套用格式(會改動選取範圍、打斷選取)。行首 `- `/`- [ ]` 轉成 •/☐ 有兩道:打字當下(`ConvertTypedPrefix`)與游標離開該行時補轉(`ConvertLeftoverPrefixes`),確保畫面與重新載入後(`ToEditor`)一致。
 - 標題列的按鈕與標籤「按住移動超過系統拖曳門檻才開始拖曳視窗」,不是按下就拖——否則按鈕點擊與名稱雙擊都收不到。

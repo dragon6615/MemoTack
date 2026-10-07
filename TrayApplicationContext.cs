@@ -33,11 +33,11 @@ public class TrayApplicationContext : ApplicationContext
         var state = NoteStorage.Load();
         _settings = state.Settings;
 
-        // 舊版預設快捷鍵遷移：
+        // 舊版預設快捷鍵遷移（Alt+F10 不遷移：可能是使用者自己選的）：
         // - Ctrl+Alt+S 是更早的預設值
         // - Alt+F12 不會生效（F12 被 Windows 保留給除錯器）
         if (_settings.Hotkey is "Ctrl+Alt+S" or "Alt+F12")
-            _settings.Hotkey = "Alt+F10";
+            _settings.Hotkey = new AppSettings().Hotkey;
 
         // 防抖存檔計時器：變更後 1.5 秒才寫檔，避免拖曳時瘋狂寫入
         _saveTimer = new System.Windows.Forms.Timer { Interval = 1500 };

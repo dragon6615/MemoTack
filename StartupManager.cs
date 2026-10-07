@@ -13,6 +13,12 @@ public static class StartupManager
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "MemoTack";
 
+    /// <summary>
+    /// 工作管理員「啟動應用程式」的停用/啟用旗標由 Windows 另存在這裡（REG_BINARY，
+    /// 第一個位元組是奇數 = 停用）。只有使用者在工作管理員切換過才會出現。
+    /// </summary>
+    private const string ApprovedKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
     /// <summary>目前執行檔完整路徑（加引號，避免路徑含空白）</summary>
     private static string ExePath => $"\"{Application.ExecutablePath}\"";
 
@@ -22,7 +28,12 @@ public static class StartupManager
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(AppName) != null;
+            if (key?.GetValue(AppName) == null)
+                return false;
+
+            // 在工作管理員停用過：Run 值還在，但實際不會啟動
+            using var approved = Registry.CurrentUser.OpenSubKey(ApprovedKeyPath);
+            return approved?.GetValue(AppName) is not byte[] { Length: > 0 } flags || (flags[0] & 1) == 0;
         }
         catch
         {
@@ -30,16 +41,27 @@ public static class StartupManager
         }
     }
 
-    /// <summary>啟用/停用自動啟動</summary>
+    /// <summary>
+    /// 啟用/停用自動啟動。停用時移除登錄值、不留殘留；
+    /// 兩種情況都清掉工作管理員的旗標——啟用時才不會被舊的「已停用」擋住。
+    /// </summary>
     public static void SetEnabled(bool enabled)
     {
         try
         {
-            using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
             if (enabled)
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
                 key.SetValue(AppName, ExePath);
+            }
             else
-                key.DeleteValue(AppName, throwOnMissingValue: false);
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+                key?.DeleteValue(AppName, throwOnMissingValue: false);
+            }
+
+            using var approved = Registry.CurrentUser.OpenSubKey(ApprovedKeyPath, writable: true);
+            approved?.DeleteValue(AppName, throwOnMissingValue: false);
         }
         catch
         {
