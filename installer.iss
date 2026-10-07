@@ -4,7 +4,7 @@
 #define MyAppName "MemoTack"
 ; 版本號由 build-installer.ps1 以 /DAppVersion=x.y.z 傳入；直接用 IDE 編譯時採用下面預設值
 #ifndef AppVersion
-  #define AppVersion "1.4.0"
+  #define AppVersion "1.4.1"
 #endif
 #define MyAppVersion AppVersion
 #define MyAppPublisher "Dragon"
