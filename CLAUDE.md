@@ -37,7 +37,7 @@ dotnet run      # 執行(無主視窗,啟動後看系統匣圖示)
 
 資料流:任何變更(移動、縮放、打字、換色)→ `TrayApplicationContext` 的 1.5 秒防抖計時器 → `SaveAll()` 把所有便箋狀態收進 `AppState` → `NoteStorage.Save()` 原子寫入(先寫 `.tmp` 再 `File.Move` 取代)`%APPDATA%\MemoTack\notes.json`。`NoteStorage.Load()` 對損毀檔案與舊格式(純便箋陣列)都有容錯,讀寫失敗一律吞掉、不讓程式崩潰——修改存取邏輯時要維持這個原則。
 
-其餘檔案各司其職:`NoteForm`(單張便箋:無邊框視窗、拖曳/縮放/顏色/名稱/標題列按鈕)、`SettingsForm`(設定視窗)、`StyledDialog`(對話框共用外觀基底類別,`SettingsForm`/`ReminderForm` 繼承)、`HotkeyManager`(Win32 `RegisterHotKey`)、`StartupManager`(HKCU Run 自動啟動)、`AppSettings`/`NoteData`(資料模型 POCO)、`ReminderSchedule`(提醒時間計算,純邏輯)、`ReminderForm`(設定提醒對話框)。
+其餘檔案各司其職:`NoteForm`(單張便箋:無邊框視窗、拖曳/縮放/顏色/名稱/標題列按鈕)、`SettingsForm`(設定視窗)、`StyledDialog`(對話框共用外觀基底類別,`SettingsForm`/`ReminderForm` 繼承)、`HotkeyManager`(Win32 `RegisterHotKey`)、`StartupManager`(HKCU Run 自動啟動)、`AppSettings`/`NoteData`(資料模型 POCO)、`ReminderSchedule`(提醒時間計算,純邏輯)、`ReminderForm`(設定提醒對話框)、`AboutForm`(關於視窗)。
 
 內容編輯器:`MarkdownTextBox`(繼承 RichTextBox)即時套用 markdown 樣式,`MarkdownSyntax` 負責逐行解析(純邏輯,可單獨測試)。存檔的 `Content` 是標準 markdown 純文字;編輯器畫面上待辦與清單換成 ☐/☑/•(`MarkdownSyntax.ToEditor`/`ToStorage` 互轉),所以載入/存檔一律走 `MarkdownTextBox.Markdown`,不要直接讀寫 `Text`。語法符號用 RichEdit 隱藏文字(CFE_HIDDEN)藏起來,只有游標所在段落顯示。
 

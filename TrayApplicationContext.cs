@@ -63,6 +63,7 @@ public class TrayApplicationContext : ApplicationContext
 
         menu.Items.Add("設定...", null, (_, _) => OpenSettings());
         menu.Items.Add("檢查更新...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
+        menu.Items.Add("關於 MemoTack...", null, (_, _) => { using var dlg = new AboutForm(); dlg.ShowDialog(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("結束", null, (_, _) => ExitApp());
         menu.Opening += (_, _) =>

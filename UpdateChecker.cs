@@ -16,7 +16,10 @@ public sealed record UpdateInfo(Version Version, string Notes, string InstallerN
 /// </summary>
 public static class UpdateChecker
 {
-    private const string LatestReleaseUrl = "https://api.github.com/repos/dragon6615/MemoTack/releases/latest";
+    public const string RepoUrl = "https://github.com/dragon6615/MemoTack";
+
+    /// <summary>最近的 Release 清單（新到舊）；跨多版更新時要把中間每一版的說明都列出來</summary>
+    private const string ReleasesUrl = "https://api.github.com/repos/dragon6615/MemoTack/releases?per_page=30";
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -41,19 +44,29 @@ public static class UpdateChecker
 
     /// <summary>
     /// 查 GitHub 最新正式版（不含草稿與預先發行版）。比目前版本新就回傳資訊，否則 null。
+    /// 更新內容包含目前版本之後的每一版（新到舊），跨版更新的人才不會漏看中間的改動。
     /// 連線失敗會丟出例外，由呼叫端決定要不要提示（自動檢查時安靜略過）。
     /// </summary>
     public static async Task<UpdateInfo?> CheckAsync(CancellationToken cancel = default)
     {
-        using var response = await Http.GetAsync(LatestReleaseUrl, cancel);
+        using var response = await Http.GetAsync(ReleasesUrl, cancel);
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancel));
-        var root = json.RootElement;
 
-        string tag = root.GetProperty("tag_name").GetString() ?? "";
-        if (!Version.TryParse(tag.TrimStart('v', 'V'), out var latest) || latest <= CurrentVersion)
+        var newer = new List<(Version Version, JsonElement Release)>();
+        foreach (var release in json.RootElement.EnumerateArray())
+        {
+            if (release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean())
+                continue;
+            string tag = release.GetProperty("tag_name").GetString() ?? "";
+            if (Version.TryParse(tag.TrimStart('v', 'V'), out var v) && v > CurrentVersion)
+                newer.Add((v, release));
+        }
+        if (newer.Count == 0)
             return null;
+        newer.Sort((a, b) => b.Version.CompareTo(a.Version));
 
+        var (latest, root) = newer[0];
         string installerName = $"MemoTack-Setup-{latest.ToString(3)}.exe";
         string? url = null;
         foreach (var asset in root.GetProperty("assets").EnumerateArray())
@@ -64,10 +77,18 @@ public static class UpdateChecker
         if (url == null)
             return null; // 發佈還沒完成（安裝檔還沒上傳），下次再看
 
-        string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+        string body = BodyOf(root);
         var sha = Regex.Match(body, @"\b([0-9A-Fa-f]{64})\s+" + Regex.Escape(installerName));
-        return new UpdateInfo(latest, ReleaseNotes(body), installerName, url, sha.Success ? sha.Groups[1].Value : null);
+
+        // 只差一版：照舊不加版本標題（視窗標題已寫版本）；跨多版：每版前面加「# x.y.z」
+        string notes = newer.Count == 1
+            ? ReleaseNotes(body)
+            : string.Join("\n\n", newer.Select(n => $"# {n.Version.ToString(3)}\n" + ReleaseNotes(BodyOf(n.Release))));
+        return new UpdateInfo(latest, notes, installerName, url, sha.Success ? sha.Groups[1].Value : null);
     }
+
+    private static string BodyOf(JsonElement release) =>
+        release.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
 
     /// <summary>
     /// Release 說明只取更新內容（「---」之後是安裝說明與檢查碼，給網頁看的），
