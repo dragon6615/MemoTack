@@ -30,6 +30,9 @@ public class NoteData
     /// </summary>
     public int? CustomHue { get; set; }
 
+    /// <summary>自訂顏色是深色版（深底淺字）。設為 true 時 ColorIndex 會一併設成炭黑，降回舊版也還是深色便箋</summary>
+    public bool CustomDark { get; set; }
+
     /// <summary>文字字型大小（pt），可用 Ctrl+滾輪 調整</summary>
     public float FontSize { get; set; } = 11f;
 

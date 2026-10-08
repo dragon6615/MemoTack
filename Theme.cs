@@ -23,13 +23,45 @@ internal static class Theme
     // 用 OKLCH（感知均勻色彩空間）固定「看起來的」明度與彩度、只換色相；
     // HSL 或相對亮度都不行：同樣數值的黃綠色會比藍紫色鮮豔刺眼得多。
 
-    private const double BodyLightness = 0.93, BodyChroma = 0.065;   // 內容區
-    private const double HeaderLightness = 0.86, HeaderChroma = 0.09; // 標題列
+    private const double BodyLightness = 0.93, BodyChroma = 0.065;   // 淺色：內容區
+    private const double HeaderLightness = 0.86, HeaderChroma = 0.09; // 淺色：標題列
+    private const double DarkBodyLightness = 0.34, DarkBodyChroma = 0.045;     // 深色：明度接近炭黑，帶一點色調
+    private const double DarkHeaderLightness = 0.285, DarkHeaderChroma = 0.045;
 
-    public static NoteColor FromHue(int hue)
+    /// <summary>炭黑在 Palette 的位置：深色自訂色會把 ColorIndex 設成它，讓舊版退回深色</summary>
+    public const int CharcoalIndex = 6;
+
+    /// <summary>淺色列顯示的預設色（炭黑移到深色列）</summary>
+    public const int LightPresetCount = 6;
+
+    /// <summary>有深色版的預設色（黃、綠、粉紅、藍、紫；灰的深色版就是炭黑）</summary>
+    public const int DarkVariantCount = 5;
+
+    public static NoteColor FromHue(int hue, bool dark = false)
     {
         hue = ((hue % 360) + 360) % 360;
-        return new NoteColor("自訂", FromOklch(BodyLightness, BodyChroma, hue), FromOklch(HeaderLightness, HeaderChroma, hue));
+        return dark
+            ? new NoteColor("自訂深色", FromOklch(DarkBodyLightness, DarkBodyChroma, hue), FromOklch(DarkHeaderLightness, DarkHeaderChroma, hue), Dark: true)
+            : new NoteColor("自訂", FromOklch(BodyLightness, BodyChroma, hue), FromOklch(HeaderLightness, HeaderChroma, hue));
+    }
+
+    /// <summary>預設色的 OKLCH 色相：深色版沿用同一個色相，深黃看起來就是黃色系</summary>
+    public static int PresetHue(int index)
+    {
+        var (_, a, b) = SrgbToOklab(Palette[index].Body);
+        return ((int)Math.Round(Math.Atan2(b, a) * 180 / Math.PI) + 360) % 360;
+    }
+
+    private static (double L, double A, double B) SrgbToOklab(Color c)
+    {
+        static double Linear(int v) { double s = v / 255.0; return s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); }
+        double r = Linear(c.R), g = Linear(c.G), b = Linear(c.B);
+        double l = Math.Cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        double m = Math.Cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        double s = Math.Cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s);
     }
 
     /// <summary>OKLCH → sRGB。超出 sRGB 色域時降低彩度直到能顯示（色相與明度不變）</summary>

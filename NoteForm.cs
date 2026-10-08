@@ -9,17 +9,17 @@ namespace MemoTack;
 public class NoteForm : Form
 {
     private static NoteColor[] Palette => Theme.Palette;
-    private NoteColor CurrentColor => _data.CustomHue is int hue ? CustomColor(hue) : Palette[_data.ColorIndex];
+    private NoteColor CurrentColor => _data.CustomHue is int hue ? CustomColor(hue, _data.CustomDark) : Palette[_data.ColorIndex];
 
-    private NoteColor? _customColor; // 自訂色的換算有二分搜尋，色相沒變就沿用
-    private int _customColorHue = -1;
+    private NoteColor? _customColor; // 自訂色要做色域換算，色相與深淺沒變就沿用
+    private (int Hue, bool Dark) _customColorKey = (-1, false);
 
-    private NoteColor CustomColor(int hue)
+    private NoteColor CustomColor(int hue, bool dark)
     {
-        if (_customColor == null || _customColorHue != hue)
+        if (_customColor == null || _customColorKey != (hue, dark))
         {
-            _customColor = Theme.FromHue(hue);
-            _customColorHue = hue;
+            _customColor = Theme.FromHue(hue, dark);
+            _customColorKey = (hue, dark);
         }
         return _customColor;
     }
@@ -292,68 +292,84 @@ public class NoteForm : Form
 
     private ToolStripDropDown? _colorMenu;
 
+    /// <summary>色盤上的一個色票：顯示的顏色、點了做什麼、目前是否選中</summary>
+    private sealed record Swatch(NoteColor Color, Action Apply, Func<bool> IsSelected);
+
     /// <summary>
-    /// 點 🎨：在按鈕下方跳出色盤。上排是預設色（目前的顏色加外框標示），
-    /// 下方是自訂顏色的色相條：拖曳時便箋即時換色，挑到的色相一律換算成適合便箋的淡色。
+    /// 點 🎨：在按鈕下方跳出色盤。最上方切換淺色／深色，下面是該組的預設色（目前的顏色加外框標示），
+    /// 最下方是自訂顏色的色相條：拖曳時便箋即時換色，任何色相都換算成適合便箋的淺色或深色。
     /// </summary>
     private void ShowColorMenu()
     {
         _colorMenu?.Dispose();
 
-        int size = _titleBar.Height;
-        var panel = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            WrapContents = false,
-            BackColor = Theme.MenuBack,
-            Padding = Padding.Empty, // 外圍留白由 MenuStyle 的選單內距負責
-            Margin = Padding.Empty,
-        };
-        for (int i = 0; i < Palette.Length; i++)
-        {
-            int index = i;
-            var swatch = new Button
+        var light = Enumerable.Range(0, Theme.LightPresetCount)
+            .Select(i => new Swatch(Palette[i], () => SetColor(i), () => _data.CustomHue == null && _data.ColorIndex == i))
+            .ToList();
+        var dark = Enumerable.Range(0, Theme.DarkVariantCount)
+            .Select(i =>
             {
-                Size = new Size(size, size),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Theme.MenuBack,
-                Margin = new Padding(2),
-                TabStop = false,
-                Cursor = Cursors.Hand,
-                AccessibleName = Palette[index].Name,
-            };
-            swatch.FlatAppearance.BorderSize = 0;
-            swatch.FlatAppearance.MouseOverBackColor = Theme.MenuHover;
-            swatch.Paint += (_, e) => PaintSwatch(e.Graphics, swatch.ClientRectangle, Palette[index], _data.CustomHue == null && index == _data.ColorIndex);
-            swatch.Click += (_, _) =>
-            {
-                _colorMenu?.Close();
-                SetColor(index);
-            };
-            panel.Controls.Add(swatch);
-        }
+                int hue = Theme.PresetHue(i);
+                var color = Theme.FromHue(hue, dark: true) with { Name = "深" + Palette[i].Name };
+                return new Swatch(color, () => SetCustomHue(hue, dark: true),
+                    () => _data.CustomHue == hue && _data.CustomDark);
+            })
+            .Append(new Swatch(Palette[Theme.CharcoalIndex], () => SetColor(Theme.CharcoalIndex),
+                () => _data.CustomHue == null && _data.ColorIndex == Theme.CharcoalIndex))
+            .ToList();
 
-        int rowWidth = panel.GetPreferredSize(Size.Empty).Width;
-        var customLabel = new Label
-        {
-            Text = "自訂顏色",
-            AutoSize = true,
-            ForeColor = Theme.MenuTextMuted,
-            Margin = new Padding(Dpi(6), Dpi(6), 0, Dpi(2)),
-        };
+        int size = _titleBar.Height;
+        // 色盤是不取得焦點的彈出視窗，一般 ToolTip 只在視窗作用中才顯示，所以另建一個 ShowAlways 的
+        var swatchTip = new ToolTip { ShowAlways = true };
+        var lightRow = MakeSwatchRow(light, size, swatchTip);
+        var darkRow = MakeSwatchRow(dark, size, swatchTip);
+        int rowWidth = Math.Max(lightRow.GetPreferredSize(Size.Empty).Width, darkRow.GetPreferredSize(Size.Empty).Width);
+
         var hueBar = new HueBar
         {
-            Hue = _data.CustomHue,
             Size = new Size(rowWidth - Dpi(4), Math.Max(Dpi(14), size / 2)),
             Margin = new Padding(Dpi(2), 0, Dpi(2), Dpi(4)),
             AccessibleName = "自訂顏色",
         };
         hueBar.HueChanged += hue =>
         {
-            SetCustomHue(hue);
-            foreach (Control swatch in panel.Controls)
-                swatch.Invalidate(); // 預設色的選取外框要拿掉
+            SetCustomHue(hue, hueBar.Dark);
+            lightRow.Invalidate(true); // 預設色的選取外框要拿掉
+            darkRow.Invalidate(true);
+        };
+
+        // 淺色／深色切換：只換色盤顯示的那一組，選了顏色才改便箋
+        var btnLight = MakeModeButton("淺色");
+        var btnDark = MakeModeButton("深色");
+        void ShowMode(bool isDark)
+        {
+            lightRow.Visible = !isDark;
+            darkRow.Visible = isDark;
+            hueBar.Dark = isDark;
+            hueBar.Hue = _data.CustomHue != null && _data.CustomDark == isDark ? _data.CustomHue : null;
+            btnLight.Checked = !isDark;
+            btnDark.Checked = isDark;
+        }
+        btnLight.Click += (_, _) => ShowMode(false);
+        btnDark.Click += (_, _) => ShowMode(true);
+        var modeRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            BackColor = Theme.MenuBack,
+            Margin = new Padding(Dpi(2), Dpi(2), 0, Dpi(4)),
+            Padding = Padding.Empty,
+        };
+        modeRow.Controls.Add(btnLight);
+        modeRow.Controls.Add(btnDark);
+
+        var customLabel = new Label
+        {
+            Text = "自訂顏色",
+            AutoSize = true,
+            ForeColor = Theme.MenuTextMuted,
+            Margin = new Padding(Dpi(6), Dpi(6), 0, Dpi(2)),
         };
 
         var layout = new FlowLayoutPanel
@@ -364,17 +380,80 @@ public class NoteForm : Form
             WrapContents = false,
             BackColor = Theme.MenuBack,
             Margin = Padding.Empty,
-            Padding = Padding.Empty,
+            Padding = Padding.Empty, // 外圍留白由 MenuStyle 的選單內距負責
         };
-        layout.Controls.Add(panel);
+        layout.Controls.Add(modeRow);
+        layout.Controls.Add(lightRow);
+        layout.Controls.Add(darkRow);
         layout.Controls.Add(customLabel);
         layout.Controls.Add(hueBar);
+        ShowMode(CurrentColor.Dark);
 
         _colorMenu = new ToolStripDropDown { Padding = Padding.Empty };
+        _colorMenu.Disposed += (_, _) => swatchTip.Dispose();
         _colorMenu.Items.Add(new ToolStripControlHost(layout) { Margin = Padding.Empty, Padding = Padding.Empty });
         _colorMenu.Closed += (_, _) => UpdateReveal();
         MenuStyle.Apply(_colorMenu);
         _colorMenu.Show(_btnColor, new Point(0, _btnColor.Height));
+    }
+
+    private FlowLayoutPanel MakeSwatchRow(List<Swatch> swatches, int size, ToolTip tip)
+    {
+        var row = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            BackColor = Theme.MenuBack,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+        };
+        foreach (var item in swatches)
+        {
+            var swatch = new Button
+            {
+                Size = new Size(size, size),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Theme.MenuBack,
+                Margin = new Padding(2),
+                TabStop = false,
+                Cursor = Cursors.Hand,
+                AccessibleName = item.Color.Name,
+            };
+            swatch.FlatAppearance.BorderSize = 0;
+            swatch.FlatAppearance.MouseOverBackColor = Theme.MenuHover;
+            swatch.Paint += (_, e) => PaintSwatch(e.Graphics, swatch.ClientRectangle, item.Color, item.IsSelected());
+            swatch.Click += (_, _) =>
+            {
+                _colorMenu?.Close();
+                item.Apply();
+            };
+            tip.SetToolTip(swatch, item.Color.Name);
+            row.Controls.Add(swatch);
+        }
+        return row;
+    }
+
+    /// <summary>淺色／深色切換鈕：選中的那個有淡灰底</summary>
+    private RadioButton MakeModeButton(string text)
+    {
+        var btn = new RadioButton
+        {
+            Text = text,
+            Appearance = Appearance.Button,
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Theme.MenuBack,
+            ForeColor = Theme.MenuText,
+            Padding = new Padding(Dpi(6), 0, Dpi(6), 0),
+            Margin = new Padding(0, 0, Dpi(2), 0),
+            TabStop = false,
+            Cursor = Cursors.Hand,
+        };
+        btn.FlatAppearance.BorderSize = 0;
+        btn.FlatAppearance.CheckedBackColor = Theme.MenuHover;
+        btn.FlatAppearance.MouseOverBackColor = Theme.MenuHover;
+        return btn;
     }
 
     /// <summary>色盤上的圓形色票：內容色填滿、標題列色描邊；選中的外加深灰色圈</summary>
@@ -400,15 +479,22 @@ public class NoteForm : Form
             return;
         _data.ColorIndex = index;
         _data.CustomHue = null;
+        _data.CustomDark = false;
         ApplyColor();
         Changed?.Invoke();
     }
 
-    private void SetCustomHue(int hue)
+    private void SetCustomHue(int hue, bool dark)
     {
-        if (_data.CustomHue == hue)
+        if (_data.CustomHue == hue && _data.CustomDark == dark)
             return;
         _data.CustomHue = hue;
+        _data.CustomDark = dark;
+        // ColorIndex 是舊版的退路：深色自訂色退回炭黑，淺色則不能停在炭黑
+        if (dark)
+            _data.ColorIndex = Theme.CharcoalIndex;
+        else if (_data.ColorIndex == Theme.CharcoalIndex)
+            _data.ColorIndex = 0;
         ApplyColor();
         Changed?.Invoke();
     }
@@ -1123,8 +1209,9 @@ public class NoteForm : Form
     /// </summary>
     private sealed class HueBar : Control
     {
-        private static Color[]? s_colors; // 360 個色相的內容色，所有便箋共用
+        private static Color[]? s_light, s_dark; // 360 個色相的內容色，所有便箋共用
         private int? _hue;
+        private bool _dark;
 
         public event Action<int>? HueChanged;
 
@@ -1143,7 +1230,16 @@ public class NoteForm : Form
             set { _hue = value; Invalidate(); }
         }
 
-        private static Color[] Colors => s_colors ??= Enumerable.Range(0, 360).Select(h => Theme.FromHue(h).Body).ToArray();
+        /// <summary>true = 顯示深色版的色相</summary>
+        public bool Dark
+        {
+            get => _dark;
+            set { _dark = value; Invalidate(); }
+        }
+
+        private Color[] Colors => _dark
+            ? s_dark ??= Enumerable.Range(0, 360).Select(h => Theme.FromHue(h, dark: true).Body).ToArray()
+            : s_light ??= Enumerable.Range(0, 360).Select(h => Theme.FromHue(h).Body).ToArray();
 
         /// <summary>色條左右各縮半個標記寬，標記移到兩端也不會被切掉</summary>
         private Rectangle BarRect
