@@ -490,11 +490,6 @@ public class NoteForm : Form
             return;
         _data.CustomHue = hue;
         _data.CustomDark = dark;
-        // ColorIndex 是舊版的退路：深色自訂色退回炭黑，淺色則不能停在炭黑
-        if (dark)
-            _data.ColorIndex = Theme.CharcoalIndex;
-        else if (_data.ColorIndex == Theme.CharcoalIndex)
-            _data.ColorIndex = 0;
         ApplyColor();
         Changed?.Invoke();
     }

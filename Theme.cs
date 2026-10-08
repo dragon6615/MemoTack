@@ -28,7 +28,7 @@ internal static class Theme
     private const double DarkBodyLightness = 0.34, DarkBodyChroma = 0.045;     // 深色：明度接近炭黑，帶一點色調
     private const double DarkHeaderLightness = 0.285, DarkHeaderChroma = 0.045;
 
-    /// <summary>炭黑在 Palette 的位置：深色自訂色會把 ColorIndex 設成它，讓舊版退回深色</summary>
+    /// <summary>炭黑在 Palette 的位置（色盤上放在深色列）</summary>
     public const int CharcoalIndex = 6;
 
     /// <summary>淺色列顯示的預設色（炭黑移到深色列）</summary>
