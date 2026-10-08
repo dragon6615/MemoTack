@@ -149,7 +149,7 @@ public class ReminderForm : StyledDialog
         }
 
         // 色帶用便箋的顏色並顯示便箋名稱，一看就知道在設定哪一張
-        SetLayout(MakeHeader("⏰  設定提醒", data.DisplayName(24), _accent), body, MakeFooter(clear, _btnOk, btnCancel));
+        SetLayout(MakeHeader(Theme.IconReminder, "設定提醒", data.DisplayName(24), _accent), body, MakeFooter(clear, _btnOk, btnCancel));
 
         AcceptButton = _btnOk;
         CancelButton = btnCancel;

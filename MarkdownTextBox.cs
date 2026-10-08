@@ -353,6 +353,7 @@ public sealed class MarkdownTextBox : RichTextBox
         SelectionFont = FontFor(size, baseStyle);
         SelectionColor = ForeColor;
         SetSelectionHidden(false);
+        SetSelectionSpaceBefore(start > 0 ? HeadingSpaceBefore[md.HeadingLevel] : 0); // 第一行上方不留白
 
         foreach (var (runStart, length, style) in md.Runs())
         {
@@ -387,6 +388,21 @@ public sealed class MarkdownTextBox : RichTextBox
             szFaceName = string.Empty,
         };
         SendMessage(Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, ref format);
+    }
+
+    /// <summary>標題上方的留白（pt）：標題跟上一段黏在一起時看不出段落層次</summary>
+    private static readonly float[] HeadingSpaceBefore = { 0f, 8f, 6f, 4f };
+
+    /// <summary>選取範圍所在段落的段前距（PARAFORMAT2 的 dySpaceBefore，單位 twip = 1/20 pt）</summary>
+    private void SetSelectionSpaceBefore(float points)
+    {
+        var format = new PARAFORMAT2
+        {
+            cbSize = Marshal.SizeOf<PARAFORMAT2>(),
+            dwMask = PFM_SPACEBEFORE,
+            dySpaceBefore = (int)(points * 20),
+        };
+        SendMessage(Handle, EM_SETPARAFORMAT, IntPtr.Zero, ref format);
     }
 
     private Font FontFor(float size, FontStyle style) => CachedFont(Font.FontFamily.Name, size, style);
@@ -687,6 +703,7 @@ public sealed class MarkdownTextBox : RichTextBox
             format, new ToolStripSeparator(),
             undo, new ToolStripSeparator(), cut, copy, paste, delete, new ToolStripSeparator(), selectAll,
         });
+        MenuStyle.Apply(menu);
         menu.Opening += (_, _) =>
         {
             undo.Enabled = CanUndo;
@@ -809,8 +826,42 @@ public sealed class MarkdownTextBox : RichTextBox
     private const uint CFM_HIDDEN = 0x0100;
     private const uint CFE_HIDDEN = 0x0100;
 
+    private const int EM_SETPARAFORMAT = WM_USER + 71;
+    private const uint PFM_SPACEBEFORE = 0x0040;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X, Y; }
+
+    /// <summary>richedit.h 的 PARAFORMAT2（只用到 cbSize、dwMask、dySpaceBefore）</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PARAFORMAT2
+    {
+        public int cbSize;
+        public uint dwMask;
+        public short wNumbering;
+        public short wEffects;
+        public int dxStartIndent;
+        public int dxRightIndent;
+        public int dxOffset;
+        public short wAlignment;
+        public short cTabCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        public int[] rgxTabs;
+        public int dySpaceBefore;
+        public int dySpaceAfter;
+        public int dyLineSpacing;
+        public short sStyle;
+        public byte bLineSpacingRule;
+        public byte bOutlineLevel;
+        public short wShadingWeight;
+        public short wShadingStyle;
+        public short wNumberingStart;
+        public short wNumberingStyle;
+        public short wNumberingTab;
+        public short wBorderSpace;
+        public short wBorderWidth;
+        public short wBorders;
+    }
 
     /// <summary>richedit.h 的 CHARFORMAT2W（只用到 cbSize、dwMask、dwEffects）</summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -841,6 +892,9 @@ public sealed class MarkdownTextBox : RichTextBox
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref CHARFORMAT2 lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref PARAFORMAT2 lParam);
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);

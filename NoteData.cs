@@ -20,8 +20,15 @@ public class NoteData
     public int Width { get; set; } = 640;
     public int Height { get; set; } = 480;
 
-    /// <summary>背景顏色索引（對應 NoteForm.Palette：0黃 1綠 2粉 3藍）</summary>
+    /// <summary>背景顏色索引（對應 Theme.Palette：0黃 1綠 2粉 3藍 4紫 5灰 6炭黑）</summary>
     public int ColorIndex { get; set; } = 0;
+
+    /// <summary>
+    /// 自訂顏色的色相（0–359）；null = 使用 ColorIndex 的預設色。
+    /// 只存色相，亮度與飽和度由 Theme.FromHue 決定，日後調整配色公式時舊資料會跟著更新。
+    /// 舊版程式讀不到這個欄位會略過，退回 ColorIndex 的顏色。
+    /// </summary>
+    public int? CustomHue { get; set; }
 
     /// <summary>文字字型大小（pt），可用 Ctrl+滾輪 調整</summary>
     public float FontSize { get; set; } = 11f;

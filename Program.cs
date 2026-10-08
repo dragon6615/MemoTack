@@ -6,7 +6,17 @@ namespace MemoTack;
 internal static class Program
 {
     /// <summary>第二個實例用來通知第一個實例「把便箋叫出來」的事件名稱</summary>
-    private const string ShowSignalName = @"Local\MemoTack_ShowNotes";
+    private const string ShowSignalName = @"Local\MemoTack_ShowNotes" + DevSuffix;
+
+#if DEBUG
+    /// <summary>
+    /// 開發版（Debug 建置）用獨立的單一實例鎖與資料夾，可與已安裝的正式版同時執行，
+    /// 不會碰到真實便箋，也不會改寫開機自動啟動的路徑。
+    /// </summary>
+    public const string DevSuffix = "-Dev";
+#else
+    public const string DevSuffix = "";
+#endif
 
     private static Mutex? s_singleInstance;
 
@@ -26,7 +36,7 @@ internal static class Program
     private static void Main()
     {
         // 單一實例保護：避免「開機自動啟動」+「手動開啟」同時跑兩份
-        using var mutex = new Mutex(initiallyOwned: true, @"Local\MemoTack_SingleInstance", out bool createdNew);
+        using var mutex = new Mutex(initiallyOwned: true, @"Local\MemoTack_SingleInstance" + DevSuffix, out bool createdNew);
         s_singleInstance = createdNew ? mutex : null;
         if (!createdNew)
         {
@@ -48,7 +58,9 @@ internal static class Program
         ApplicationConfiguration.Initialize();
 
         // 若已設定自動啟動但執行檔路徑改變，自動更新登錄值
+#if !DEBUG
         StartupManager.RefreshPathIfEnabled();
+#endif
 
         var context = new TrayApplicationContext();
         Application.ThreadException += (_, e) => context.HandleUnhandledException(e.Exception);

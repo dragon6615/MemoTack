@@ -68,8 +68,8 @@ public abstract class StyledDialog : Form
         _root.MinimumSize = new Size(_root.Width, 0);
     }
 
-    /// <summary>頂端色帶：大標題 + 副標題</summary>
-    protected Control MakeHeader(string title, string subtitle, Color accent)
+    /// <summary>頂端色帶：圖示 + 大標題 + 副標題。圖示用圖示字型（Theme.Icon*），跟便箋標題列一致</summary>
+    protected Control MakeHeader(string icon, string title, string subtitle, Color accent)
     {
         var band = new TableLayoutPanel
         {
@@ -81,14 +81,33 @@ public abstract class StyledDialog : Form
             Margin = Padding.Empty,
             Dock = DockStyle.Fill,
         };
-        band.Controls.Add(new Label
+        var titleRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            Margin = Padding.Empty,
+        };
+        var titleFont = OwnFont(13f, FontStyle.Bold);
+        var iconFont = OwnIconFont(14f);
+        titleRow.Controls.Add(new Label
+        {
+            Text = icon,
+            AutoSize = true,
+            Font = iconFont,
+            ForeColor = TextStrong,
+            // 圖示字型的行高比文字矮：上方補差距讓兩者垂直置中
+            Margin = new Padding(0, Math.Max(0, (titleFont.Height - iconFont.Height) / 2), Dpi(8), 0),
+        });
+        titleRow.Controls.Add(new Label
         {
             Text = title,
             AutoSize = true,
-            Font = OwnFont(13f, FontStyle.Bold),
+            Font = titleFont,
             ForeColor = TextStrong,
             Margin = Padding.Empty,
         });
+        band.Controls.Add(titleRow);
         band.Controls.Add(new Label
         {
             Text = subtitle,
@@ -199,6 +218,13 @@ public abstract class StyledDialog : Form
     protected Font OwnFont(float size, FontStyle style = FontStyle.Regular)
     {
         var f = new Font("Microsoft JhengHei UI", size, style);
+        _fonts.Add(f);
+        return f;
+    }
+
+    protected Font OwnIconFont(float size)
+    {
+        var f = new Font(Theme.IconFontFamily, size);
         _fonts.Add(f);
         return f;
     }

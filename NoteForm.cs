@@ -8,14 +8,21 @@ namespace MemoTack;
 /// </summary>
 public class NoteForm : Form
 {
-    // ---- 預設色盤：(內容背景, 標題列) ----
-    internal static readonly (Color Body, Color Header)[] Palette =
+    private static NoteColor[] Palette => Theme.Palette;
+    private NoteColor CurrentColor => _data.CustomHue is int hue ? CustomColor(hue) : Palette[_data.ColorIndex];
+
+    private NoteColor? _customColor; // 自訂色的換算有二分搜尋，色相沒變就沿用
+    private int _customColorHue = -1;
+
+    private NoteColor CustomColor(int hue)
     {
-        (Color.FromArgb(255, 242, 171), Color.FromArgb(248, 224, 118)), // 黃
-        (Color.FromArgb(208, 240, 192), Color.FromArgb(175, 222, 151)), // 綠
-        (Color.FromArgb(255, 216, 224), Color.FromArgb(245, 183, 196)), // 粉紅
-        (Color.FromArgb(205, 229, 255), Color.FromArgb(166, 205, 243)), // 藍
-    };
+        if (_customColor == null || _customColorHue != hue)
+        {
+            _customColor = Theme.FromHue(hue);
+            _customColorHue = hue;
+        }
+        return _customColor;
+    }
 
     private const int GripSize = 6;      // 邊緣縮放感應區（同時是視覺留白）
     private const int TitleHeight = 32;  // 標題列高度
@@ -25,17 +32,18 @@ public class NoteForm : Form
     private readonly Panel _titleBar;
     private readonly Panel _contentPanel;
     private readonly MarkdownTextBox _textBox;
-    private readonly Button _btnColor;
-    private readonly Button _btnDelete;
-    private readonly Button _btnNew;
-    private readonly Button _btnClose;
-    private readonly Button _btnReminder;
-    private readonly Label _titleLabel;        // 標題列的便箋名稱
-    private readonly Label _reminderLabel;     // 標題列的提醒時間
+    private readonly TitleButton _btnColor;
+    private readonly TitleButton _btnDelete;
+    private readonly TitleButton _btnNew;
+    private readonly TitleButton _btnClose;
+    private readonly TitleButton _btnReminder;
+    private readonly TitleButton[] _titleButtons;
+    private readonly Label _titleLabel;                  // 標題列的便箋名稱
+    private readonly SingleLineLabel _reminderLabel;     // 標題列的提醒時間
     private TextBox? _renameBox;               // 改名時疊在名稱上的輸入框
     private readonly ResizeGrip _grip;         // 右下角縮放把手
     private readonly Panel _reminderBar;       // 響鈴時顯示在標題列下方的提醒列
-    private readonly Label _reminderBarLabel;
+    private readonly SingleLineLabel _reminderBarLabel;
     private readonly Button _btnSnooze;
     private readonly Button _btnDone;
     private readonly System.Windows.Forms.Timer _flashTimer = new() { Interval = 500 };
@@ -78,34 +86,36 @@ public class NoteForm : Form
         _titleBar.MouseDown += TitleBar_MouseDown;
 
         // 顏色按鈕：點了跳出四色色盤直接選
-        _btnColor = MakeTitleButton("🎨", "變更顏色");
+        _btnColor = MakeTitleButton(Theme.IconColor, "變更顏色");
         _btnColor.Dock = DockStyle.Left;
         _btnColor.Click += (_, _) => ShowColorMenu();
 
-        // 刪除按鈕：與 ✕ 之間隔著 ＋、⏰，且有內容時會先確認，避免誤按
-        _btnDelete = MakeTitleButton("🗑", "永久刪除此便箋");
+        // 刪除按鈕：與 ✕ 之間隔著 ⏰，且有內容時會先確認，避免誤按
+        _btnDelete = MakeTitleButton(Theme.IconDelete, "永久刪除此便箋");
         _btnDelete.Dock = DockStyle.Right;
         _btnDelete.Click += BtnDelete_Click;
 
-        _btnClose = MakeTitleButton("✕", "關閉此便箋（保留內容，可從系統匣再開啟）");
+        _btnClose = MakeTitleButton(Theme.IconClose, "關閉此便箋（保留內容，可從系統匣再開啟）");
         _btnClose.Dock = DockStyle.Right;
         _btnClose.Click += (_, _) => CloseRequested?.Invoke(this);
 
-        _btnNew = MakeTitleButton("＋", "新增便箋");
+        _btnNew = MakeTitleButton(Theme.IconAdd, "新增便箋");
         _btnNew.Dock = DockStyle.Right;
         _btnNew.Click += (_, _) => NewNoteRequested?.Invoke(this);
 
-        _btnReminder = MakeTitleButton("⏰", "設定提醒");
+        _btnReminder = MakeTitleButton(Theme.IconReminder, "設定提醒");
         _btnReminder.Dock = DockStyle.Right;
         _btnReminder.Click += BtnReminder_Click;
 
-        // 中間空白處：左邊是便箋名稱（填滿剩餘空間），右邊緊鄰 🗑 的是提醒時間（寬度由 FitReminderLabel 控制）。
+        _titleButtons = new[] { _btnColor, _btnDelete, _btnNew, _btnClose, _btnReminder };
+
+        // 中間空白處：左邊是便箋名稱（填滿剩餘空間），右邊緊鄰 ＋ 的是提醒時間（寬度由 FitReminderLabel 控制）。
         // 兩者都是拖曳區；名稱雙擊可改名，所以拖曳要等滑鼠移動超過門檻才開始，否則收不到雙擊
         _titleLabel = new SingleLineLabel
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.FromArgb(50, 50, 50),
+            ForeColor = Theme.NoteText,
             Padding = new Padding(2, 0, 0, 0),
         };
         _titleLabel.MouseDown += TitleButton_MouseDown;
@@ -116,24 +126,25 @@ public class NoteForm : Form
         {
             Dock = DockStyle.Right,
             TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(90, 90, 90),
+            ForeColor = Theme.NoteTextMuted,
+            Icon = Theme.IconReminder,
         };
         _reminderLabel.MouseDown += TitleButton_MouseDown;
         _reminderLabel.MouseMove += TitleButton_MouseMove;
         _titleBar.Resize += (_, _) => FitReminderLabel();
 
         // Dock 佈局依 Controls 反序處理：
-        // 加入順序 名稱、時間、🗑、＋、⏰、✕、🎨 → 佈局 🎨(最左)，右側由右往左 ✕、⏰、＋、🗑、時間，名稱填滿中間
+        // 加入順序 名稱、時間、＋、🗑、⏰、✕、🎨 → 佈局 🎨(最左)，右側由右往左 ✕、⏰、🗑、＋、時間，名稱填滿中間
         _titleBar.Controls.Add(_titleLabel);
         _titleBar.Controls.Add(_reminderLabel);
-        _titleBar.Controls.Add(_btnDelete);
         _titleBar.Controls.Add(_btnNew);
+        _titleBar.Controls.Add(_btnDelete);
         _titleBar.Controls.Add(_btnReminder);
         _titleBar.Controls.Add(_btnClose);
         _titleBar.Controls.Add(_btnColor);
 
         // ---- 提醒列（響鈴時才顯示） ----
-        _reminderBarLabel = new SingleLineLabel { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+        _reminderBarLabel = new SingleLineLabel { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Icon = Theme.IconReminder };
         _btnSnooze = MakeBarButton("延後 10 分", "10 分鐘後再提醒一次");
         _btnSnooze.Click += (_, _) => SnoozeReminder();
         _btnDone = MakeBarButton("完成", "不重複的提醒會清除；重複的提醒排到下一次");
@@ -141,7 +152,7 @@ public class NoteForm : Form
         _reminderBar = new Panel
         {
             Dock = DockStyle.Top,
-            BackColor = AlertColor,
+            BackColor = Theme.Alert,
             Padding = new Padding(6, 3, 4, 3),
             Visible = false,
         };
@@ -156,14 +167,15 @@ public class NoteForm : Form
         _textBox = new MarkdownTextBox
         {
             Dock = DockStyle.Fill,
-            ForeColor = Color.FromArgb(50, 50, 50),
+            ForeColor = Theme.NoteText,
             Markdown = data.Content, // 待辦在畫面上顯示為 ☐／☑，存檔仍是標準 - [ ]
         };
         _textBox.MouseWheel += TextBox_MouseWheel;              // Ctrl+滾輪 調整字型大小
         _textBox.TextChanged += (_, _) => Changed?.Invoke();    // 內容變更 → 通知存檔
 
         // 外包一層 Panel 給文字內距，看起來不那麼擠
-        _contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 5, 6, 5) };
+        // 內距依 DPI 換算（寫死像素在 150% 縮放下會顯得擠）
+        _contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Dpi(8), Dpi(6), Dpi(8), Dpi(6)) };
         _contentPanel.Controls.Add(_textBox);
 
         // 加入順序 內容、提醒列、標題列 → 佈局順序 標題列(最上)、提醒列(其下)，內容填滿剩餘
@@ -184,10 +196,15 @@ public class NoteForm : Form
         Controls.Add(_grip);
         _grip.BringToFront();
 
+        _revealTimer.Tick += RevealTimer_Tick;
+        _hoverPoll.Tick += HoverPoll_Tick;
+        HookHover(this);
+
         ApplyColor();
         ApplySettings();
         RefreshTitle();
         RefreshReminderLabel();
+        UpdateReveal(animate: false);
     }
 
     /// <summary>
@@ -206,13 +223,13 @@ public class NoteForm : Form
         // 置頂與否依設定
         TopMost = _settings.AlwaysOnTop;
 
-        // 標題列：字型設定
-        _btnColor.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 1f);
-        _btnDelete.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 1f);
-        _btnNew.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 3f);
-        _btnClose.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 2f);
-        _btnReminder.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize + 1f);
-        _reminderLabel.Font = OwnFont(_settings.TitleFontFamily, Math.Max(7f, _settings.TitleFontSize - 1f));
+        // 標題列：按鈕用圖示字型（同一個大小，粗細才一致），文字用設定的字型
+        var iconFont = OwnFont(Theme.IconFontFamily, _settings.TitleFontSize);
+        foreach (var b in _titleButtons)
+            b.Font = iconFont;
+        float reminderSize = Math.Max(7f, _settings.TitleFontSize - 1f);
+        _reminderLabel.Font = OwnFont(_settings.TitleFontFamily, reminderSize);
+        _reminderLabel.IconFont = OwnFont(Theme.IconFontFamily, reminderSize - 1f);
         _titleLabel.Font = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize, FontStyle.Bold);
 
         // 標題列高度：用最大的按鈕字型「實際高度」計算，字型改多大就跟著多高
@@ -220,11 +237,13 @@ public class NoteForm : Form
             _titleBar.Height = Math.Max(26, (int)Math.Ceiling(probe.GetHeight()) + 10);
 
         int btnWidth = Math.Max(28, _titleBar.Height); // 正方形按鈕
-        _btnColor.Width = _btnDelete.Width = _btnNew.Width = _btnClose.Width = _btnReminder.Width = btnWidth;
+        foreach (var b in _titleButtons)
+            b.Width = btnWidth;
 
         // 提醒列：說明與按鈕共用一個字型，高度隨字級調整
         var barFont = OwnFont(_settings.TitleFontFamily, _settings.TitleFontSize);
         _reminderBarLabel.Font = _btnSnooze.Font = _btnDone.Font = barFont;
+        _reminderBarLabel.IconFont = iconFont;
         _reminderBar.Height = Math.Max(28, (int)Math.Ceiling(barFont.GetHeight()) + 14);
 
         // 內容：字型用全域設定，字級用便箋自己的值
@@ -271,10 +290,12 @@ public class NoteForm : Form
 
     // ---------- 顏色 ----------
 
-    private static readonly string[] PaletteNames = { "黃", "綠", "粉紅", "藍" };
     private ToolStripDropDown? _colorMenu;
 
-    /// <summary>點 🎨：在按鈕下方跳出四色色盤，目前的顏色加外框標示</summary>
+    /// <summary>
+    /// 點 🎨：在按鈕下方跳出色盤。上排是預設色（目前的顏色加外框標示），
+    /// 下方是自訂顏色的色相條：拖曳時便箋即時換色，挑到的色相一律換算成適合便箋的淡色。
+    /// </summary>
     private void ShowColorMenu()
     {
         _colorMenu?.Dispose();
@@ -285,8 +306,8 @@ public class NoteForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             WrapContents = false,
-            BackColor = Color.White,
-            Padding = new Padding(4),
+            BackColor = Theme.MenuBack,
+            Padding = Padding.Empty, // 外圍留白由 MenuStyle 的選單內距負責
             Margin = Padding.Empty,
         };
         for (int i = 0; i < Palette.Length; i++)
@@ -296,15 +317,15 @@ public class NoteForm : Form
             {
                 Size = new Size(size, size),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.White,
+                BackColor = Theme.MenuBack,
                 Margin = new Padding(2),
                 TabStop = false,
                 Cursor = Cursors.Hand,
-                AccessibleName = PaletteNames[index],
+                AccessibleName = Palette[index].Name,
             };
             swatch.FlatAppearance.BorderSize = 0;
-            swatch.FlatAppearance.MouseOverBackColor = Color.FromArgb(235, 235, 235);
-            swatch.Paint += (_, e) => PaintSwatch(e.Graphics, swatch.ClientRectangle, Palette[index], index == _data.ColorIndex);
+            swatch.FlatAppearance.MouseOverBackColor = Theme.MenuHover;
+            swatch.Paint += (_, e) => PaintSwatch(e.Graphics, swatch.ClientRectangle, Palette[index], _data.CustomHue == null && index == _data.ColorIndex);
             swatch.Click += (_, _) =>
             {
                 _colorMenu?.Close();
@@ -313,13 +334,51 @@ public class NoteForm : Form
             panel.Controls.Add(swatch);
         }
 
+        int rowWidth = panel.GetPreferredSize(Size.Empty).Width;
+        var customLabel = new Label
+        {
+            Text = "自訂顏色",
+            AutoSize = true,
+            ForeColor = Theme.MenuTextMuted,
+            Margin = new Padding(Dpi(6), Dpi(6), 0, Dpi(2)),
+        };
+        var hueBar = new HueBar
+        {
+            Hue = _data.CustomHue,
+            Size = new Size(rowWidth - Dpi(4), Math.Max(Dpi(14), size / 2)),
+            Margin = new Padding(Dpi(2), 0, Dpi(2), Dpi(4)),
+            AccessibleName = "自訂顏色",
+        };
+        hueBar.HueChanged += hue =>
+        {
+            SetCustomHue(hue);
+            foreach (Control swatch in panel.Controls)
+                swatch.Invalidate(); // 預設色的選取外框要拿掉
+        };
+
+        var layout = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Theme.MenuBack,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        layout.Controls.Add(panel);
+        layout.Controls.Add(customLabel);
+        layout.Controls.Add(hueBar);
+
         _colorMenu = new ToolStripDropDown { Padding = Padding.Empty };
-        _colorMenu.Items.Add(new ToolStripControlHost(panel) { Margin = Padding.Empty, Padding = Padding.Empty });
+        _colorMenu.Items.Add(new ToolStripControlHost(layout) { Margin = Padding.Empty, Padding = Padding.Empty });
+        _colorMenu.Closed += (_, _) => UpdateReveal();
+        MenuStyle.Apply(_colorMenu);
         _colorMenu.Show(_btnColor, new Point(0, _btnColor.Height));
     }
 
     /// <summary>色盤上的圓形色票：內容色填滿、標題列色描邊；選中的外加深灰色圈</summary>
-    private static void PaintSwatch(Graphics g, Rectangle bounds, (Color Body, Color Header) color, bool selected)
+    private static void PaintSwatch(Graphics g, Rectangle bounds, NoteColor color, bool selected)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         int d = bounds.Height * 3 / 5;
@@ -330,57 +389,96 @@ public class NoteForm : Form
             g.DrawEllipse(pen, rect);
         if (selected)
         {
-            using var ring = new Pen(Color.FromArgb(70, 70, 70), 2f);
+            using var ring = new Pen(Theme.SwatchRing, 2f);
             g.DrawEllipse(ring, Rectangle.Inflate(rect, 3, 3));
         }
     }
 
     private void SetColor(int index)
     {
-        if (index == _data.ColorIndex)
+        if (index == _data.ColorIndex && _data.CustomHue == null)
             return;
         _data.ColorIndex = index;
+        _data.CustomHue = null;
         ApplyColor();
         Changed?.Invoke();
     }
 
+    private void SetCustomHue(int hue)
+    {
+        if (_data.CustomHue == hue)
+            return;
+        _data.CustomHue = hue;
+        ApplyColor();
+        Changed?.Invoke();
+    }
+
+    private int Dpi(int px) => (int)Math.Round(px * DeviceDpi / 96f);
+
     private void ApplyColor()
     {
-        var (body, header) = Palette[_data.ColorIndex % Palette.Length];
-        BackColor = body;               // Padding 邊緣也會呈現內容色
-        _contentPanel.BackColor = body;
-        _textBox.BackColor = body;
-        _grip.DotColor = Darken(header);
-        PaintHeader(header);
+        var color = CurrentColor;
+        BackColor = color.Body;         // Padding 邊緣也會呈現內容色
+        _contentPanel.BackColor = color.Body;
+        _textBox.BackColor = color.Body;
+        _textBox.ForeColor = color.Text; // 深色便箋用淺色字
+        _titleLabel.ForeColor = color.Text;
+        _reminderLabel.ForeColor = color.TextMuted;
+        _grip.DotColor = color.Outline;
+        PaintHeader(color.Header);
+        ApplyBorderColor();
     }
 
     /// <summary>標題列與按鈕上色（響鈴閃爍也用這個）</summary>
     private void PaintHeader(Color header)
     {
         _titleBar.BackColor = header;
-        foreach (Button b in new[] { _btnColor, _btnDelete, _btnNew, _btnClose, _btnReminder })
+        var color = CurrentColor;
+        foreach (var b in _titleButtons)
         {
             b.BackColor = header;
-            b.FlatAppearance.MouseOverBackColor = Darken(header);
-            b.FlatAppearance.MouseDownBackColor = Darken(Darken(header));
+            b.ForeColor = color.Glyph;
+            b.HoverColor = color.Hover(header, 0.09f);
+            b.PressedColor = color.Hover(header, 0.16f);
+        }
+        Invalidate(); // 縮放邊的色帶要跟著換色（OnPaintBackground）
+    }
+
+    /// <summary>
+    /// 視窗四周留給縮放感應的邊（Padding）預設是內容色，會讓標題列看起來像一塊內縮的貼片。
+    /// 把標題列與提醒列兩側（及最上方）的邊也塗成它們的顏色，色帶就延伸到視窗邊緣。
+    /// </summary>
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        base.OnPaintBackground(e);
+        var title = _titleBar.Bounds;
+        using (var brush = new SolidBrush(_titleBar.BackColor))
+            e.Graphics.FillRectangle(brush, 0, 0, Width, title.Bottom);
+        if (_reminderBar.Visible)
+        {
+            var bar = _reminderBar.Bounds;
+            using var brush = new SolidBrush(_reminderBar.BackColor);
+            e.Graphics.FillRectangle(brush, 0, bar.Top, Width, bar.Height);
         }
     }
 
-    private static Color Darken(Color c) =>
-        Color.FromArgb(c.R * 85 / 100, c.G * 85 / 100, c.B * 85 / 100);
-
-    private Button MakeTitleButton(string text, string tooltip)
+    protected override void OnLayout(LayoutEventArgs e)
     {
-        var btn = new Button
+        base.OnLayout(e);
+        Invalidate(); // 標題列高度或提醒列顯示與否改變時，色帶位置跟著變
+    }
+
+    private static Color Darken(Color c) => Theme.Darken(c);
+
+    private TitleButton MakeTitleButton(string glyph, string tooltip)
+    {
+        var btn = new TitleButton
         {
-            Text = text,
+            Text = glyph,        // 圖示字型的字碼；字型由 ApplySettings 設定
             Width = 38,
-            FlatStyle = FlatStyle.Flat, // 字型由 ApplySettings 設定
-            ForeColor = Color.FromArgb(80, 80, 80),
-            TabStop = false,
-            Cursor = Cursors.Hand,
+            ForeColor = Theme.NoteGlyph,
+            AccessibleName = tooltip,
         };
-        btn.FlatAppearance.BorderSize = 0;
         _toolTip.SetToolTip(btn, tooltip);
         // 便箋很窄時標題列幾乎全是按鈕：在按鈕上按住移動也能拖曳視窗
         btn.MouseDown += TitleButton_MouseDown;
@@ -398,28 +496,139 @@ public class NoteForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(4, 0, 4, 0),
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(255, 224, 178),
-            ForeColor = Color.FromArgb(60, 60, 60),
+            BackColor = Theme.AlertButton,
+            ForeColor = Theme.AlertText,
             TabStop = false,
             Cursor = Cursors.Hand,
         };
-        btn.FlatAppearance.BorderColor = Darken(AlertColor);
-        btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(255, 236, 204);
+        btn.FlatAppearance.BorderColor = Darken(Theme.Alert);
+        btn.FlatAppearance.MouseOverBackColor = Theme.AlertButtonHover;
         _toolTip.SetToolTip(btn, tooltip);
         return btn;
     }
 
-    // ---------- 提醒 ----------
+    // ---------- 標題列按鈕淡入淡出 ----------
+    // 便箋是主角、按鈕是配角：便箋在使用中（有焦點、滑鼠在上面、正在響鈴、色盤開著）才顯示按鈕，
+    // 其餘時間只留名稱與提醒時間。按鈕位置保留不動，淡出只是看不見，版面不會跳動。
 
-    /// <summary>響鈴時標題列的閃爍色，也是提醒列的底色</summary>
-    private static readonly Color AlertColor = Color.FromArgb(255, 183, 77);
+    private const float RevealDurationMs = 150f;
+    private readonly System.Windows.Forms.Timer _revealTimer = new() { Interval = 15 };
+    private readonly System.Windows.Forms.Timer _hoverPoll = new() { Interval = 120 };
+    private readonly System.Diagnostics.Stopwatch _revealClock = new();
+    private float _reveal;      // 0 = 隱藏、1 = 完全顯示
+    private bool _active;       // 便箋是前景視窗
+    private bool _mouseInside;  // 滑鼠在便箋上（含縮放邊）
+
+    private bool RevealWanted =>
+        _active || _mouseInside || IsRinging || _renameBox != null || _colorMenu?.Visible == true;
+
+    private void UpdateReveal(bool animate = true)
+    {
+        float target = RevealWanted ? 1f : 0f;
+        if (!animate || !Visible)
+        {
+            _revealTimer.Stop();
+            SetReveal(target);
+            return;
+        }
+        if (_reveal != target && !_revealTimer.Enabled)
+        {
+            _revealClock.Restart();
+            _revealTimer.Start();
+        }
+    }
+
+    private void RevealTimer_Tick(object? sender, EventArgs e)
+    {
+        float target = RevealWanted ? 1f : 0f;
+        float step = _revealClock.ElapsedMilliseconds / RevealDurationMs;
+        _revealClock.Restart();
+        float next = target > _reveal ? Math.Min(target, _reveal + step) : Math.Max(target, _reveal - step);
+        SetReveal(next);
+        if (next == target)
+            _revealTimer.Stop();
+    }
+
+    private void SetReveal(float value)
+    {
+        _reveal = value;
+        float eased = value * value * (3f - 2f * value); // smoothstep：頭尾放慢，比等速自然
+        foreach (var b in _titleButtons)
+            b.Reveal = eased;
+    }
+
+    /// <summary>
+    /// 滑鼠進入便箋任何一個子控制項就算移入；移出改用輪詢判斷——
+    /// 縮放邊是非工作區（WM_NCHITTEST），從那裡離開不會有 MouseLeave。
+    /// </summary>
+    private void HookHover(Control control)
+    {
+        control.MouseEnter += (_, _) =>
+        {
+            _hoverPoll.Start();
+            if (_mouseInside) return;
+            _mouseInside = true;
+            UpdateReveal();
+        };
+        control.ControlAdded += (_, e) => { if (e.Control != null) HookHover(e.Control); };
+        foreach (Control child in control.Controls)
+            HookHover(child);
+    }
+
+    private void HoverPoll_Tick(object? sender, EventArgs e)
+    {
+        if (Visible && IsCursorOverNote())
+            return;
+        _hoverPoll.Stop();
+        _mouseInside = false;
+        UpdateReveal();
+    }
+
+    /// <summary>游標在便箋範圍內、而且沒有被其他視窗蓋住</summary>
+    private bool IsCursorOverNote()
+    {
+        var pos = Cursor.Position;
+        if (!Bounds.Contains(pos))
+            return false;
+        return GetAncestor(WindowFromPoint(pos), GA_ROOT) == Handle;
+    }
+
+    private const uint GA_ROOT = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Point point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        _active = true;
+        UpdateReveal();
+    }
+
+    protected override void OnDeactivate(EventArgs e)
+    {
+        base.OnDeactivate(e);
+        _active = false;
+        UpdateReveal();
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        UpdateReveal(animate: false);
+    }
+
+    // ---------- 提醒 ----------
 
     /// <summary>提醒時間到、正在等使用者按「延後」或「完成」</summary>
     public bool IsRinging { get; private set; }
 
     private void BtnReminder_Click(object? sender, EventArgs e)
     {
-        using var dlg = new ReminderForm(ToData(), Palette[_data.ColorIndex].Header); // ToData：讓預覽拿到最新內容
+        using var dlg = new ReminderForm(ToData(), CurrentColor.Accent); // ToData：讓預覽拿到最新內容
         if (dlg.ShowDialog(this) != DialogResult.OK)
             return;
 
@@ -447,8 +656,8 @@ public class NoteForm : Form
         }
 
         string repeatMark = _data.ReminderRepeat == ReminderRepeat.None ? "" : " ↻";
-        _reminderFull = $"⏰ {ReminderSchedule.FormatShort(due.Value, DateTime.Now)}{repeatMark}";
-        _reminderCompact = $"⏰ {due.Value:HH:mm}";
+        _reminderFull = $"{ReminderSchedule.FormatShort(due.Value, DateTime.Now)}{repeatMark}";
+        _reminderCompact = $"{due.Value:HH:mm}";
         FitReminderLabel();
 
         string tip = $"提醒：{due.Value:yyyy/MM/dd HH:mm}（{ReminderSchedule.Describe(RepeatRule.From(_data))}）";
@@ -469,10 +678,11 @@ public class NoteForm : Form
         var now = DateTime.Now;
         bool overdue = now - due > TimeSpan.FromMinutes(2); // 程式沒在執行或電腦睡眠時錯過的
         _reminderBarLabel.Text = overdue
-            ? $"⏰ 已逾時（原定 {ReminderSchedule.FormatShort(due, now)}）"
-            : "⏰ 提醒時間到了";
+            ? $"已逾時（原定 {ReminderSchedule.FormatShort(due, now)}）"
+            : "提醒時間到了";
         _toolTip.SetToolTip(_reminderBarLabel, _reminderBarLabel.Text);
         _reminderBar.Visible = true;
+        UpdateReveal();
 
         ShowWithoutFocus();
         // 響鈴期間暫時置頂確保看得到；StopRinging 時依設定還原
@@ -513,6 +723,7 @@ public class NoteForm : Form
         _flashTimer.Stop();
         _reminderBar.Visible = false;
         ApplyColor();
+        UpdateReveal();
         if (!_settings.AlwaysOnTop)
             SetWindowPos(Handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
@@ -521,14 +732,14 @@ public class NoteForm : Form
     private void FlashTimer_Tick(object? sender, EventArgs e)
     {
         _flashCount++;
-        var header = Palette[_data.ColorIndex].Header;
+        var header = CurrentColor.Header;
         if (_flashCount >= 20)
         {
             _flashTimer.Stop();
             PaintHeader(header);
             return;
         }
-        PaintHeader(_flashCount % 2 == 1 ? AlertColor : header);
+        PaintHeader(_flashCount % 2 == 1 ? Theme.Alert : header);
     }
 
     // ---------- 名稱 ----------
@@ -543,14 +754,14 @@ public class NoteForm : Form
     /// 提醒時間優先完整顯示：寬度取「文字需要的寬度」與「扣掉按鈕後剩下的寬度」較小者，
     /// 名稱（Fill）用剩下的空間，不夠就以「…」截斷。
     /// </summary>
-    private string _reminderFull = string.Empty;    // 「⏰ 明天 09:00 ↻」
-    private string _reminderCompact = string.Empty; // 空間不夠時的「⏰ 09:00」
+    private string _reminderFull = string.Empty;    // 「明天 09:00 ↻」（鈴鐺圖示由標籤自己畫）
+    private string _reminderCompact = string.Empty; // 空間不夠時的「09:00」
 
     private int ButtonsWidth =>
         _btnColor.Width + _btnDelete.Width + _btnNew.Width + _btnReminder.Width + _btnClose.Width;
 
     private int MeasureReminder(string text) =>
-        text.Length == 0 ? 0 : TextRenderer.MeasureText(text, _reminderLabel.Font).Width + 6;
+        text.Length == 0 ? 0 : _reminderLabel.MeasureContent(text) + 6;
 
     private void FitReminderLabel()
     {
@@ -608,6 +819,7 @@ public class NoteForm : Form
                 RefreshTitle();
             }
             _renameBox = null;
+            UpdateReveal();
             // 移除與釋放延到事件處理結束後：不能在輸入框自己的 KeyDown/LostFocus 裡把它 Dispose 掉
             BeginInvoke(() =>
             {
@@ -627,6 +839,7 @@ public class NoteForm : Form
         box.LostFocus += (_, _) => Finish(commit: true);
 
         _renameBox = box;
+        UpdateReveal();
         _titleBar.Controls.Add(box);
         box.BringToFront();
         box.Focus();
@@ -745,13 +958,22 @@ public class NoteForm : Form
         }
     }
 
-    // ---------- 圓角（Windows 11 原生 DWM 圓角） ----------
+    // ---------- 圓角、陰影、邊框（Windows 11 原生 DWM） ----------
 
+    private const int DWMWA_NCRENDERING_POLICY = 2;
+    private const int DWMNCRP_ENABLED = 2;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;
+    private const int DWMWA_BORDER_COLOR = 34;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MARGINS { public int Left, Right, Top, Bottom; }
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -760,11 +982,30 @@ public class NoteForm : Form
         {
             int pref = DWMWCP_ROUND;
             DwmSetWindowAttribute(Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
+
+            // 無邊框視窗預設沒有陰影，看起來像平貼在桌面上的色塊。
+            // 開啟 DWM 非工作區繪製並把框架延伸 1px，DWM 就會替它畫原生陰影（浮在桌面上的紙）
+            int policy = DWMNCRP_ENABLED;
+            DwmSetWindowAttribute(Handle, DWMWA_NCRENDERING_POLICY, ref policy, sizeof(int));
+            var margins = new MARGINS { Left = 1, Right = 1, Top = 1, Bottom = 1 };
+            DwmExtendFrameIntoClientArea(Handle, ref margins);
         }
         catch
         {
-            // Windows 10 以下沒有此 API：維持直角，不影響功能
+            // Windows 10 以下沒有這些 API：維持直角、無陰影，不影響功能
         }
+        ApplyBorderColor();
+    }
+
+    /// <summary>Windows 11 的視窗外框改用便箋同色系的深色，取代系統預設的灰框，在深色桌布上也有清楚輪廓</summary>
+    private void ApplyBorderColor()
+    {
+        if (!IsHandleCreated)
+            return;
+        var c = CurrentColor.Outline;
+        int colorRef = c.R | (c.G << 8) | (c.B << 16);
+        try { DwmSetWindowAttribute(Handle, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int)); }
+        catch { /* Windows 10 沒有此屬性 */ }
     }
 
     // ---------- 拖曳移動（標題列） ----------
@@ -826,19 +1067,237 @@ public class NoteForm : Form
     /// </summary>
     private sealed class SingleLineLabel : Label
     {
+        private const TextFormatFlags BaseFlags = TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis |
+            TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+
+        /// <summary>畫在文字前面的圖示（圖示字型的字碼）；有文字時才畫</summary>
+        public string Icon { get; set; } = string.Empty;
+
+        public Font? IconFont { get; set; }
+
+        private bool HasIcon => Icon.Length > 0 && IconFont != null;
+        private int IconGap => Font.Height / 4;
+
+        private int IconWidth =>
+            TextRenderer.MeasureText(Icon, IconFont, Size.Empty, TextFormatFlags.NoPadding).Width;
+
+        /// <summary>圖示 + 文字需要的寬度</summary>
+        public int MeasureContent(string text)
+        {
+            int width = TextRenderer.MeasureText(text, Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+            return HasIcon ? width + IconWidth + IconGap : width;
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
-            var flags = TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis |
-                        TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
-            flags |= TextAlign switch
+            var rect = new Rectangle(Padding.Left, Padding.Top,
+                Width - Padding.Horizontal, Height - Padding.Vertical);
+            var align = TextAlign switch
             {
                 ContentAlignment.MiddleRight => TextFormatFlags.Right,
                 ContentAlignment.MiddleCenter => TextFormatFlags.HorizontalCenter,
                 _ => TextFormatFlags.Left,
             };
-            var rect = new Rectangle(Padding.Left, Padding.Top,
-                Width - Padding.Horizontal, Height - Padding.Vertical);
-            TextRenderer.DrawText(e.Graphics, Text, Font, rect, ForeColor, flags);
+
+            if (HasIcon && Text.Length > 0)
+            {
+                // 圖示 + 文字當成一組對齊；靠右時寬度不夠就從左邊開始、文字以「…」截斷
+                int iconWidth = IconWidth;
+                int total = Math.Min(MeasureContent(Text), rect.Width);
+                int x = align == TextFormatFlags.Right ? rect.Right - total
+                      : align == TextFormatFlags.HorizontalCenter ? rect.X + (rect.Width - total) / 2
+                      : rect.X;
+                TextRenderer.DrawText(e.Graphics, Icon, IconFont, new Rectangle(x, rect.Y, iconWidth, rect.Height),
+                    ForeColor, TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                int textX = x + iconWidth + IconGap;
+                rect = new Rectangle(textX, rect.Y, Math.Max(0, rect.Right - textX), rect.Height);
+                align = TextFormatFlags.Left;
+            }
+            TextRenderer.DrawText(e.Graphics, Text, Font, rect, ForeColor, BaseFlags | align);
+        }
+    }
+
+    /// <summary>
+    /// 自訂顏色的色相條：由左到右是 0–359 度色相（都已換算成便箋用的淡色），
+    /// 按下或拖曳就選色；目前的自訂色以圓形標記標出，用預設色時不顯示標記。
+    /// </summary>
+    private sealed class HueBar : Control
+    {
+        private static Color[]? s_colors; // 360 個色相的內容色，所有便箋共用
+        private int? _hue;
+
+        public event Action<int>? HueChanged;
+
+        public HueBar()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.Selectable, false);
+            Cursor = Cursors.Hand;
+            AccessibleRole = AccessibleRole.Slider;
+        }
+
+        public int? Hue
+        {
+            get => _hue;
+            set { _hue = value; Invalidate(); }
+        }
+
+        private static Color[] Colors => s_colors ??= Enumerable.Range(0, 360).Select(h => Theme.FromHue(h).Body).ToArray();
+
+        /// <summary>色條左右各縮半個標記寬，標記移到兩端也不會被切掉</summary>
+        private Rectangle BarRect
+        {
+            get
+            {
+                int r = Height / 2;
+                return new Rectangle(r, Height / 4, Math.Max(1, Width - r * 2), Height / 2);
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.MenuBack);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var bar = BarRect;
+            var colors = Colors;
+
+            using (var path = Theme.RoundedRect(bar, bar.Height / 2))
+            {
+                var clip = g.Clip;
+                g.SetClip(path);
+                for (int x = 0; x < bar.Width; x++)
+                {
+                    using var pen = new Pen(colors[x * 360 / bar.Width]);
+                    g.DrawLine(pen, bar.X + x, bar.Y, bar.X + x, bar.Bottom);
+                }
+                g.Clip = clip;
+                using var outline = new Pen(Theme.MenuSeparator);
+                g.DrawPath(outline, path);
+            }
+
+            if (_hue is int hue)
+            {
+                int cx = bar.X + hue * bar.Width / 360;
+                int d = Height - 2;
+                var marker = new Rectangle(cx - d / 2, (Height - d) / 2, d, d);
+                using (var fill = new SolidBrush(colors[hue]))
+                    g.FillEllipse(fill, marker);
+                using (var white = new Pen(Color.White, Math.Max(2f, d / 8f)))
+                    g.DrawEllipse(white, Rectangle.Inflate(marker, -(int)(d / 10f), -(int)(d / 10f)));
+                using (var ring = new Pen(Theme.SwatchRing, 1.5f))
+                    g.DrawEllipse(ring, marker);
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left)
+                Pick(e.X);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (e.Button == MouseButtons.Left)
+                Pick(e.X);
+        }
+
+        private void Pick(int x)
+        {
+            var bar = BarRect;
+            int hue = Math.Clamp((x - bar.X) * 360 / bar.Width, 0, 359);
+            if (hue == _hue)
+                return;
+            Hue = hue;
+            HueChanged?.Invoke(hue);
+        }
+    }
+
+    /// <summary>
+    /// 標題列按鈕：自繪圖示字型，hover／按下時畫圓角底色（不是整格方塊）。
+    /// Reveal 控制圖示濃淡：0 時圖示與標題列同色（看不見），1 時完整顯示。
+    /// </summary>
+    private sealed class TitleButton : Control
+    {
+        private bool _hover;
+        private bool _pressed;
+        private float _reveal = 1f;
+
+        public TitleButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            // 不吃雙擊：連按兩下 ＋ 應該是兩次 Click，而不是一次 Click 加一次 DoubleClick
+            SetStyle(ControlStyles.Selectable | ControlStyles.StandardDoubleClick, false);
+            TabStop = false;
+            Cursor = Cursors.Hand;
+            AccessibleRole = AccessibleRole.PushButton;
+        }
+
+        public Color HoverColor { get; set; } = SystemColors.ControlLight;
+        public Color PressedColor { get; set; } = SystemColors.ControlDark;
+
+        public float Reveal
+        {
+            get => _reveal;
+            set
+            {
+                if (_reveal == value) return;
+                _reveal = value;
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = _pressed = false; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            _pressed = false;
+            Invalidate();
+            base.OnMouseUp(e);
+        }
+
+        /// <summary>按住拖曳視窗時 capture 被系統拿走、收不到 MouseUp：在這裡清掉按下狀態</summary>
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            _pressed = false;
+            _hover = IsHandleCreated && ClientRectangle.Contains(PointToClient(Cursor.Position));
+            Invalidate();
+            base.OnMouseCaptureChanged(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(BackColor);
+            if (Text.Length == 0)
+                return;
+
+            if ((_hover || _pressed) && _reveal > 0f)
+            {
+                int inset = Math.Max(2, Height / 8);
+                var rect = Rectangle.Inflate(ClientRectangle, -inset, -inset);
+                var fill = _pressed ? PressedColor : HoverColor;
+                using var path = Theme.RoundedRect(rect, Math.Max(3, Height / 6));
+                using var brush = new SolidBrush(Theme.Blend(BackColor, fill, _reveal));
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.FillPath(brush, path);
+            }
+
+            var glyph = Theme.Blend(BackColor, ForeColor, _reveal);
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, glyph,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
     }
 
@@ -943,6 +1402,8 @@ public class NoteForm : Form
             _toolTip.Dispose();
             _colorMenu?.Dispose();
             _flashTimer.Dispose();
+            _revealTimer.Dispose();
+            _hoverPoll.Dispose();
             foreach (var f in _ownedFonts)
                 f.Dispose();
             _ownedFonts.Clear();

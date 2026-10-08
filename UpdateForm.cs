@@ -75,10 +75,9 @@ public class UpdateForm : StyledDialog
             DialogResult = DialogResult.Cancel;
         };
 
-        // 標題用單色符號：🎉 這類只有彩色字形的 emoji，在一般 Label 上會畫成方框
-        SetLayout(MakeHeader("⬆  有新版本可以更新",
+        SetLayout(MakeHeader(Theme.IconUpdate, "有新版本可以更新",
                              $"MemoTack {info.Version.ToString(3)}（目前是 {UpdateChecker.CurrentVersion.ToString(3)}）",
-                             NoteForm.Palette[0].Header),
+                             Theme.Palette[0].Header),
                   body, MakeFooter(_skip, _btnUpdate, _btnLater));
 
         AcceptButton = _btnUpdate;

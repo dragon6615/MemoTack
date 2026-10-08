@@ -78,7 +78,7 @@ public class SettingsForm : StyledDialog
         _toolTip.SetToolTip(reset, "把所有欄位填回全新安裝時的狀態（含關閉自動啟動），\n按「確定」才會生效。");
         reset.LinkClicked += (_, _) => FillDefaults();
 
-        SetLayout(MakeHeader("⚙  MemoTack 設定", "版本 " + VersionText(), NoteForm.Palette[0].Header),
+        SetLayout(MakeHeader(Theme.IconSettings, "MemoTack 設定", "版本 " + VersionText(), Theme.Palette[0].Header),
                   body, MakeFooter(reset, btnOk, btnCancel));
 
         AcceptButton = btnOk;

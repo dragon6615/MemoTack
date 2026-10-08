@@ -23,7 +23,7 @@ public class AboutForm : StyledDialog
         btnOk.DialogResult = DialogResult.OK;
 
         // 標題用單色符號：📌 這類只有彩色字形的 emoji，在一般 Label 上會畫成方框
-        SetLayout(MakeHeader("ℹ  MemoTack", "仿 Windows Sticky Notes 的桌面便箋小工具", NoteForm.Palette[0].Header),
+        SetLayout(MakeHeader(Theme.IconInfo, "MemoTack", "仿 Windows Sticky Notes 的桌面便箋小工具", Theme.Palette[0].Header),
                   body, MakeFooter(null, btnOk));
 
         AcceptButton = btnOk;

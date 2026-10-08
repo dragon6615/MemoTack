@@ -66,6 +66,7 @@ public class TrayApplicationContext : ApplicationContext
         menu.Items.Add("關於 MemoTack...", null, (_, _) => { using var dlg = new AboutForm(); dlg.ShowDialog(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("結束", null, (_, _) => ExitApp());
+        MenuStyle.Apply(menu);
         menu.Opening += (_, _) =>
         {
             RebuildClosedMenu();

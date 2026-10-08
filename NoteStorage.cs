@@ -9,7 +9,7 @@ namespace MemoTack;
 public static class NoteStorage
 {
     private static readonly string StorageDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MemoTack");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MemoTack" + Program.DevSuffix);
 
     private static readonly string StorageFile = Path.Combine(StorageDir, "notes.json");
 
